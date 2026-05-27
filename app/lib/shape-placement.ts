@@ -116,15 +116,37 @@ function sampleCircleAvg(
 ): number {
   let total = 0
   let count = 0
+  const maxX = width - 1
+  const maxY = height - 1
   for (let k = 0; k < UNIT_OFFSETS.length; k++) {
     const [fx, fy] = UNIT_OFFSETS[k]
-    let px = (cx + fx * radius) | 0
-    let py = (cy + fy * radius) | 0
-    if (px < 0) px = 0
-    else if (px >= width) px = width - 1
-    if (py < 0) py = 0
-    else if (py >= height) py = height - 1
-    total += gray[py * width + px]
+    const x = cx + fx * radius
+    const y = cy + fy * radius
+    // Skip out-of-bounds samples rather than clamping to the edge pixel.
+    // Edge-clamping (the previous behaviour) repeats the boundary value into
+    // the average, biasing cells whose circles extend past the canvas edge.
+    // The reference Python impl in ascii-renderer-main also skips OOB.
+    if (x < 0 || y < 0 || x > maxX || y > maxY) continue
+    // Bilinear-interpolate between the 4 surrounding pixels instead of
+    // truncating to the nearest integer. At small per-cell circle radii
+    // (e.g. r ≈ 2 px when cols=400 over a 1000-wide source), nearest-pixel
+    // sampling makes the average lurch from one pixel to the next as the
+    // circle centre moves sub-pixel — visible as ringing when sliders move.
+    const x0 = x | 0
+    const y0 = y | 0
+    const x1 = x0 + 1 > maxX ? x0 : x0 + 1
+    const y1 = y0 + 1 > maxY ? y0 : y0 + 1
+    const sx = x - x0
+    const sy = y - y0
+    const row0 = y0 * width
+    const row1 = y1 * width
+    const v00 = gray[row0 + x0]
+    const v10 = gray[row0 + x1]
+    const v01 = gray[row1 + x0]
+    const v11 = gray[row1 + x1]
+    const top = v00 + (v10 - v00) * sx
+    const bot = v01 + (v11 - v01) * sx
+    total += top + (bot - top) * sy
     count += 1
   }
   return count > 0 ? total / count : 0
@@ -308,14 +330,23 @@ export async function computeShapePlacements(
   const dim = circles.length
   const cellVec = new Float32Array(dim)
   const result: ShapeData = {}
+  // When blanks are enabled, cells whose strongest circle is below this
+  // threshold short-circuit straight to space. Without this gate, a single
+  // noisy circle (gradient halo near bright content, JPEG ringing,
+  // antialiased edges) is enough to outvote space in nearest-neighbour —
+  // the effect compounds with dimensionality (9 dims in 3×3 vs 6 in 2×3)
+  // and is amplified further by contrast, producing the dark-region flicker
+  // when brightness/contrast sliders move.
+  const DARK_GATE = 0.05
   for (let col = 0; col < cols; col++) {
     const cellOriginX = col * cellPxW
     const column: { [y: number]: string } = {}
     for (let row = 0; row < rows; row++) {
       const cellOriginY = row * cellPxH
+      let cellMax = 0
       for (let c = 0; c < dim; c++) {
         const circle = circles[c]
-        cellVec[c] = sampleCircleAvg(
+        const v = sampleCircleAvg(
           gray,
           srcWidth,
           srcHeight,
@@ -323,6 +354,12 @@ export async function computeShapePlacements(
           cellOriginY + circle.cy * cellPxH,
           circle.r * Math.min(cellPxW, cellPxH),
         )
+        cellVec[c] = v
+        if (v > cellMax) cellMax = v
+      }
+      if (allowBlank && cellMax < DARK_GATE) {
+        column[row] = ' '
+        continue
       }
       applyGlobalContrast(cellVec, contrastExp)
       column[row] = findNearestChar(table, cellVec)

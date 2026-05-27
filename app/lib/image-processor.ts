@@ -266,7 +266,11 @@ async function processImageData(
   } else if (placementMode === 'shape') {
     // Shape-vector placement (Alex Harri). Reuse the Sobel-style 8× resample
     // to guarantee enough pixels per cell for the 4×4 sampling grid inside
-    // each of the 6 circles.
+    // each of the 6 circles. Apply the blur slider here too — by default
+    // `applyImagePreprocessing` doesn't blur (blur only feeds into the
+    // value-mode downsample via `configureResizeContext`), but shape mode
+    // benefits from blur for the same reason: it smooths gradient halos and
+    // JPEG ringing that the dark gate would otherwise have to catch.
     const shapeW = width * 8
     const shapeH = height * 8
     const shapeCanvas = document.createElement('canvas')
@@ -274,7 +278,11 @@ async function processImageData(
     shapeCanvas.height = shapeH
     const shapeCtx = shapeCanvas.getContext('2d')!
     shapeCtx.imageSmoothingEnabled = true
+    if (settings.preprocessing.blur > 0) {
+      shapeCtx.filter = `blur(${settings.preprocessing.blur}px)`
+    }
     shapeCtx.drawImage(sourceCanvas, 0, 0, shapeW, shapeH)
+    shapeCtx.filter = 'none'
     const gray = luminanceRec709(
       shapeCtx.getImageData(0, 0, shapeW, shapeH).data,
       shapeW * shapeH,

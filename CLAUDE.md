@@ -4,9 +4,17 @@ Project context for future Claude sessions. Start here.
 
 ## What this is
 
-Fork of Oxide Computer's "mitos" image-to-ASCII editor. The upstream tool converts images to ASCII via luminance density mapping. **This fork adds an Acerola-style Sobel edge algorithm** that overlays directional glyphs (`| _ / \`) on top of the density pass, ported from Garrett Gunnell's [AcerolaFX_ASCII.fx](https://github.com/GarrettGunnell/AcerolaFX/blob/main/Shaders/AcerolaFX_ASCII.fx) HLSL shader (the one from his "I Tried Turning Games Into Text" video). Goal: faithful CPU-side port of the image-only path of that shader.
+Fork of Oxide Computer's "mitos" image-to-ASCII editor. The upstream tool converts images to ASCII via luminance density mapping. **This fork adds two alternative placement modes:**
 
-The original AcerolaFX repo is cloned locally to `AcerolaFX-main/` for reference. `.gitignore`'d. Treat it as read-only — it's the spec.
+1. **Sobel edge overlay** (Value mode) — Acerola-style directional glyphs (`| _ / \`) overlaid on top of the density pass, ported from Garrett Gunnell's [AcerolaFX_ASCII.fx](https://github.com/GarrettGunnell/AcerolaFX/blob/main/Shaders/AcerolaFX_ASCII.fx) HLSL shader (the one from his "I Tried Turning Games Into Text" video).
+2. **Shape-vector placement** (Shape mode) — Alex Harri's [shape-vector approach](https://alexharri.com/blog/ascii-rendering): each cell is matched to the glyph whose ink distribution best mirrors the cell's local lightness pattern. Replaces the density pass wholesale rather than overlaying.
+
+The two modes are mutually exclusive via a top-level **Placement mode** dropdown.
+
+References cloned locally (both `.gitignore`'d, treat as read-only specs):
+- `AcerolaFX-main/` — original HLSL shader. Relevant file is `Shaders/AcerolaFX_ASCII.fx`.
+- `ascii-renderer-main/` — Mayz's Python port of Alex Harri's algorithm. Source of the geometric constants in `app/lib/shape-placement.ts`.
+- `alex-harri-blog.md` — the article text itself.
 
 ## Quickstart
 
@@ -76,30 +84,68 @@ Two layers, both in [ascii-art-generator.tsx](app/components/ascii-art-generator
 
 ## Key files
 
-- [app/lib/image-processor.ts](app/lib/image-processor.ts) — image pipeline, `computeSobelEdges`, `gaussianBlurPair`, `toGrayscale`. The Sobel algorithm lives here.
-- [app/lib/ascii-program.ts](app/lib/ascii-program.ts) — `createProgramFromProcessor` wraps the user program and applies the edge overlay.
-- [app/lib/types.ts](app/lib/types.ts) — `AsciiImageData`, `EdgeData`. Tiny.
+- [app/lib/image-processor.ts](app/lib/image-processor.ts) — image pipeline, `computeSobelEdges`, `gaussianBlurPair`, `toGrayscale`. The Sobel algorithm lives here. Also dispatches to the shape branch when `placementMode === 'shape'`.
+- [app/lib/shape-placement.ts](app/lib/shape-placement.ts) — shape mode: circle layouts (`LAYOUTS`), `generateCharacterShapes`, `computeShapePlacements`, `luminanceRec709`. Self-contained.
+- [app/lib/ascii-program.ts](app/lib/ascii-program.ts) — `createProgramFromProcessor` wraps the user program and applies the edge overlay or shape overlay (mutually exclusive).
+- [app/lib/types.ts](app/lib/types.ts) — `AsciiImageData`, `EdgeData`, `ShapeData`. Tiny.
 - [app/lib/localUtils/image.ts](app/lib/localUtils/image.ts) — `valueToChar`, `getImageValue`, `getEdgeChar`. **Public surface for user scripts** — renaming or changing signatures will silently break user projects.
-- [app/components/ascii-art-generator.tsx](app/components/ascii-art-generator.tsx) — top-level state, `AsciiSettings` type, reprocessing effect.
-- [app/components/preprocessing-options.tsx](app/components/preprocessing-options.tsx) — Sobel sliders.
-- [app/components/output-options.tsx](app/components/output-options.tsx) — `predefinedCharacterSets` (incl. `acerola: ' .icoP0?@■'`).
+- [app/components/ascii-art-generator.tsx](app/components/ascii-art-generator.tsx) — top-level state, `AsciiSettings` type, reprocessing effect, "loading…" indicator.
+- [app/components/preprocessing-options.tsx](app/components/preprocessing-options.tsx) — placement mode dropdown, Value section (Sobel + character set), Shape section (layout + contrast + blank toggle).
+- [app/components/output-options.tsx](app/components/output-options.tsx) — `predefinedCharacterSets` (incl. `acerola: ' .icoP0?@■'`). Character set selector moved out to preprocessing-options.
 - [app/templates.ts](app/templates.ts) — `DEFAULT_SETTINGS` and demo templates.
 - [app/components/ascii-preview.tsx](app/components/ascii-preview.tsx) — preview viewport with zoom/pan/auto-fit.
+- [app/index.css](app/index.css) — `@font-face` declarations including DepartureMono (used by shape-mode glyph rasterization).
+- [fonts/DepartureMono-Regular.otf](fonts/DepartureMono-Regular.otf) — bundled monospace font, referenced from index.css via Vite-resolved relative URL.
 - [AcerolaFX-main/](AcerolaFX-main/) — the upstream shader source, gitignored, treat as read-only reference. The relevant file is `Shaders/AcerolaFX_ASCII.fx`. `acerola-transcript.md` is the YouTube transcript.
+- [ascii-renderer-main/](ascii-renderer-main/) — Mayz's Python port of the shape algorithm, gitignored. Source of truth for circle coordinates and the per-dim normalization scheme.
+
+## Shape mode (Alex Harri's algorithm)
+
+All in [app/lib/shape-placement.ts](app/lib/shape-placement.ts). Wired into [image-processor.ts](app/lib/image-processor.ts) `processImageData` (the shape branch sits where the Sobel branch sits, both gated on `placementMode`) and applied in [ascii-program.ts](app/lib/ascii-program.ts) via a `shapeOverlay` param that — unlike `edgeOverlay` — replaces the user's char *wholesale*. The two overlays are mutually exclusive and only one is ever passed.
+
+Pipeline:
+
+1. **Resample** the preprocessed source to `(cols·8 × rows·8)` so every cell has 64 source pixels to sample. Same trick as Sobel, separate canvas.
+2. **Luminance** to `[0, 1]` via Rec. 709 (`luminanceRec709`). Different from Sobel's Rec. 601 — Sobel is byte-faithful to Acerola; shape mode follows Alex Harri / Mayz.
+3. **Per-cell sampling vector**: average lightness within each of N circles (N = 6 for 2×3 layout, 9 for 3×3), placed at fixed normalized positions inside the cell. Sample with a stratified 4×4 grid bounded by the unit circle (~12 valid samples per circle).
+4. **Dark gate** (when Blank Space toggle is on): if the cell's brightest circle is below `DARK_GATE = 0.05`, short-circuit to space without lookup. Suppresses dark-cell flicker that came from noisy single circles being amplified through normalization and contrast.
+5. **Global contrast** (when exponent > 1): in-cell `v ← max·(v/max)^exp` normalize-pow-denormalize. Sharpens existing shape signatures without lifting flat areas.
+6. **Nearest-neighbour lookup**: brute-force Euclidean distance against a precomputed glyph table. Cached per `(cellPxW, cellPxH, allowBlank, layout)`.
+
+Glyph table (`generateCharacterShapes`):
+
+- Rasterizes each printable-ASCII char (0x21–0x7E, plus space when blanks are enabled) in **DepartureMono** via offscreen Canvas2D. `await document.fonts.load(...)` first or the first glyphs come out in the fallback font.
+- Renders at 8× the cell pixel size for crisp sampling, baseline `'middle'`, text-align `'center'`.
+- Samples the same circles, then **per-dim max-normalize with a 0.3 floor**: `max[d] = max(actual_max[d], 0.3)`. The floor is critical — without it, dims with low charset max (e.g. the centre circle in 3×3) get amplified 5–10×, making any noise in dark cells outvote space. See "Gotchas" below.
+
+### Layouts
+
+Two switchable sampling layouts in `LAYOUTS`:
+
+- **`'2x3'`** (default) — 6 circles in a staggered 2×3 grid at `cx ∈ {0.3, 0.7}`, `cy ∈ {0.2/0.15, 0.5, 0.8/0.85}` (left column lower, right higher), radius 0.22. Verbatim from Mayz / Alex Harri. Cheaper, but misses centred stems (`T`, `I`, `l`, `|`).
+- **`'3x3'`** — 9 circles in an evenly spaced 3×3 grid, no stagger. Radius 0.18 to limit cross-column overlap. Catches centred stems at the cost of a 9-D vector.
+
+The choice is exposed as a dropdown in the Shape section ("Sampling Layout"). 3×3 is more prone to dark-cell noise (more dims → more chances for one to outlier) — the dark gate exists primarily to defend 3×3.
 
 ## Settings shape
 
 `AsciiSettings.preprocessing` in [ascii-art-generator.tsx](app/components/ascii-art-generator.tsx#L54):
 
-| Field | Default | Range | Acerola uniform |
+| Field | Default | Range | Notes |
 | --- | --- | --- | --- |
-| `algorithm` | `'sobel'` | `'standard' \| 'sobel'` | n/a |
-| `sobelDogSigma` | 2.0 | 0.1–5 | `_Sigma` |
-| `sobelDogK` | 1.6 | 1–5 | `_SigmaScale` |
-| `sobelDogTau` | 1.0 | 0–1.1 | `_Tau` |
-| `sobelDogThreshold` | 0.005 | 0.001–0.1 | `_Threshold` |
-| `sobelKernelSize` | 2 | 1–10 | `_KernelSize` |
-| `sobelTileThreshold` | 8 | 0–64 | `_EdgeThreshold` |
+| `placementMode` | `'value'` | `'value' \| 'shape'` | Top-level mode switch. Sobel is gated on `value`. |
+| `algorithm` | `'sobel'` | `'standard' \| 'sobel'` | Edge detection toggle, only meaningful when `placementMode === 'value'`. |
+| `sobelDogSigma` | 2.0 | 0.1–5 | Acerola `_Sigma` |
+| `sobelDogK` | 1.6 | 1–5 | Acerola `_SigmaScale` |
+| `sobelDogTau` | 1.0 | 0–1.1 | Acerola `_Tau` |
+| `sobelDogThreshold` | 0.005 | 0.001–0.1 | Acerola `_Threshold` |
+| `sobelKernelSize` | 2 | 1–10 | Acerola `_KernelSize` |
+| `sobelTileThreshold` | 8 | 0–64 | Acerola `_EdgeThreshold` |
+| `shapeLayout` | `'2x3'` | `'2x3' \| '3x3'` | Shape mode sampling layout. |
+| `shapeContrast` | 1.0 | 1.0–5.0 | Shape mode global contrast exponent. 1.0 = off. |
+| `shapeBlankSpace` | `false` | bool | Include space in charset + enable dark gate. |
+
+Any new preprocessing field that affects the pixel output must be added to `haveProcessingSettingsChanged()` in [ascii-art-generator.tsx](app/components/ascii-art-generator.tsx), or the image won't reprocess on change.
 
 ## Pending work — TODOs
 
@@ -134,6 +180,10 @@ In rough priority order. Listed here so a future session can pick up cleanly.
 - **The shader's edge-LUT Y-flip** (`localUV.y = 8 - (tid.y % 8)`) is irrelevant to us — we render through a real font — but it changes what direction-index → glyph mapping you'd derive from reading the texture file directly. Always reason from first principles in screen-Y-down coordinates, not from the texture file.
 - **`generateImageCode()` is only called once per image.** New capabilities added there won't benefit existing projects. Prefer the program wrapper in `createProgramFromProcessor`.
 - **Public user-script surface.** `valueToChar`, `getImageValue`, `getEdgeChar`, `imageData`, `frames`, `edgeData`, `edgeFrames`, `characterSet` are all referenced in user code in templates and saved projects. Renaming = silent breakage.
+- **Per-dim normalization floor (shape mode).** `shape-placement.ts` floors the per-dim divisor at 0.3. Removing it brings back a hard-to-diagnose bug where dark cells flicker between dense glyphs as brightness/contrast move, because dims with low charset max get amplified 5–10×. The 3×3 layout has more dims and more low-max dims, so the floor matters more there.
+- **DARK_GATE only fires when Blank Space is on.** Toggle off and you may see the original flicker return on noisy/low-contrast images. That's by design — the gate's "snap to space" only makes sense when space is in the charset.
+- **DepartureMono must be `await document.fonts.load`'d before rasterizing.** Without the await the first few glyphs come out in the fallback monospace, producing mismatched shape vectors that the cache then freezes. Already handled in `generateCharacterShapes`, but watch out if you refactor.
+- **Shape vs Sobel overlay precedence.** In `ascii-program.ts → main`, edge overlay runs before shape overlay, but both can't be populated simultaneously (the UI gates them in `processCodeSource`). Don't rely on the ordering — if you ever want both active, you'll need to design a real merge.
 
 ## What's intentionally not implemented
 

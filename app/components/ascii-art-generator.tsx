@@ -798,12 +798,30 @@ export function AsciiArtGenerator() {
       setProjectName(projectData.name || 'Imported Project')
 
       if (projectData.settings) {
-        setSettings(projectData.settings as AsciiSettings)
+        // Defensive merge against DEFAULT_SETTINGS so projects saved before
+        // shape mode existed (or before any future setting is added) load
+        // with sane defaults for missing fields, instead of `undefined`
+        // crashing the reprocessor.
+        const incoming = projectData.settings as Partial<AsciiSettings>
+        const merged: AsciiSettings = {
+          ...DEFAULT_SETTINGS,
+          ...incoming,
+          meta: { ...DEFAULT_SETTINGS.meta, ...(incoming.meta ?? {}) },
+          source: { ...DEFAULT_SETTINGS.source, ...(incoming.source ?? {}) },
+          preprocessing: {
+            ...DEFAULT_SETTINGS.preprocessing,
+            ...(incoming.preprocessing ?? {}),
+          },
+          output: { ...DEFAULT_SETTINGS.output, ...(incoming.output ?? {}) },
+          export: { ...DEFAULT_SETTINGS.export, ...(incoming.export ?? {}) },
+          animation: { ...DEFAULT_SETTINGS.animation, ...(incoming.animation ?? {}) },
+        }
+        setSettings(merged)
 
         // If the imported project has code, show the code sidebar
-        if (projectData.settings.source.code) {
+        if (merged.source.code) {
           // Pass this information up to the parent
-          handleCodeProjectLoaded(projectData.settings.source.code)
+          handleCodeProjectLoaded(merged.source.code)
         }
       }
 
