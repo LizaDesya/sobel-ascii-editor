@@ -46,7 +46,7 @@ export const DEFAULT_SETTINGS: AsciiSettings = {
     characterSet: predefinedCharacterSets['acerola'],
     grid: 'none',
     showUnderlyingImage: false,
-    columns: 100,
+    columns: 200,
     rows: 110,
     useImageAspectRatio: true,
     colorMapping: 'brightness',

@@ -888,14 +888,16 @@ export function AsciiArtGenerator() {
               />
               <hr />
               {/* Preprocessing */}
-              <PreprocessingOptions
-                settings={settings.preprocessing}
-                updateSettings={(changes) => updateSettings('preprocessing', changes)}
-                characterSet={settings.output.characterSet}
-                onCharacterSetChange={(characterSet) =>
-                  updateSettings('output', { characterSet })
-                }
-              />
+              <div style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)', paddingTop: '12px', paddingBottom: '12px' }}>
+                <PreprocessingOptions
+                  settings={settings.preprocessing}
+                  updateSettings={(changes) => updateSettings('preprocessing', changes)}
+                  characterSet={settings.output.characterSet}
+                  onCharacterSetChange={(characterSet) =>
+                    updateSettings('output', { characterSet })
+                  }
+                />
+              </div>
               {(settings.source.data?.includes('data:image/gif') ?? false) && (
                 <>
                   <hr />

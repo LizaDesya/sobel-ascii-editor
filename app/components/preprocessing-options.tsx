@@ -98,7 +98,7 @@ export function PreprocessingOptions({
   }
 
   return (
-    <Container className="rounded bg-blue-500/[0.08]">
+    <Container>
       <InputSelect<PlacementMode>
         value={settings.placementMode}
         onChange={(value) => updateSettings({ placementMode: value })}
