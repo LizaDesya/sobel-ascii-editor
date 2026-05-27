@@ -134,23 +134,14 @@ export function PreprocessingOptions({
         </div>
       )}
 
-      <InputSelect<Algorithm>
-        value={settings.algorithm}
-        onChange={(value) => updateSettings({ algorithm: value as Algorithm })}
-        options={['standard', 'sobel']}
-        labelize={(algorithm) => {
-          switch (algorithm) {
-            case 'standard':
-              return 'Standard'
-            case 'sobel':
-              return 'Sobel'
-            default:
-              return algorithm
-          }
-        }}
+      <InputSwitch
+        checked={settings.algorithm === 'sobel'}
+        onChange={(checked) =>
+          updateSettings({ algorithm: checked ? 'sobel' : 'standard' })
+        }
       >
-        Algorithm
-      </InputSelect>
+        Edge Detection
+      </InputSwitch>
 
       {settings.algorithm === 'sobel' && (
         <div className="dedent">
