@@ -29,6 +29,10 @@ export const DEFAULT_SETTINGS: AsciiSettings = {
     invert: false,
     dithering: false,
     ditheringAlgorithm: 'floydSteinberg',
+    algorithm: 'sobel',
+    sobelEdgeThreshold: 0.5,
+    sobelDogSigma: 1.4,
+    sobelTileThreshold: 8,
   },
   output: {
     characterSet: predefinedCharacterSets['standard'],

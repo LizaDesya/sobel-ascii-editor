@@ -24,11 +24,12 @@ import type { Program } from '~/lib/animation'
 import { createProgramFromProcessor, generateImageCode } from '~/lib/ascii-program'
 import { clearStaleImageData, processCodeModule } from '~/lib/code-processor'
 import {
+  Algorithm,
   DitheringAlgorithm,
   processAnimatedMedia,
   processImage,
 } from '~/lib/image-processor'
-import type { AsciiImageData } from '~/lib/types'
+import type { AsciiImageData, EdgeData } from '~/lib/types'
 import { cn } from '~/lib/utils'
 import { DEFAULT_SETTINGS, TEMPLATES, TemplateType } from '~/templates'
 
@@ -58,6 +59,10 @@ export interface AsciiSettings {
     invert: boolean
     dithering: boolean
     ditheringAlgorithm: DitheringAlgorithm
+    algorithm: Algorithm
+    sobelEdgeThreshold: number
+    sobelDogSigma: number
+    sobelTileThreshold: number
   }
   output: {
     characterSet: string
@@ -98,6 +103,8 @@ export function AsciiArtGenerator() {
   const [templateType, setTemplateType] = useState<TemplateType | ''>('')
   const [currentImageData, setCurrentImageData] = useState<AsciiImageData | null>(null)
   const [currentFrames, setCurrentFrames] = useState<AsciiImageData[] | null>(null)
+  const [currentEdgeData, setCurrentEdgeData] = useState<EdgeData | null>(null)
+  const [currentEdgeFrames, setCurrentEdgeFrames] = useState<EdgeData[] | null>(null)
 
   // Processing state
   const [isExporting, setIsExporting] = useState(false)
@@ -224,6 +231,8 @@ export function AsciiArtGenerator() {
 
       let imageData = currentImageData
       let frames = currentFrames
+      let edgeData = currentEdgeData
+      let edgeFrames = currentEdgeFrames
 
       if (shouldProcess && settings.source.data) {
         if (settings.source.data.includes('data:image/gif')) {
@@ -236,6 +245,8 @@ export function AsciiArtGenerator() {
 
             imageData = gifResult.imageData
             frames = gifResult.frames
+            edgeData = gifResult.edgeData
+            edgeFrames = gifResult.edgeFrames
           }
         } else {
           const staticResult = await processStaticImage(settings.source.data, settings)
@@ -247,14 +258,18 @@ export function AsciiArtGenerator() {
 
             imageData = staticResult.imageData
             frames = null
+            edgeData = staticResult.edgeData
+            edgeFrames = null
           }
         }
       }
 
       setCurrentImageData(imageData)
       setCurrentFrames(frames)
+      setCurrentEdgeData(edgeData)
+      setCurrentEdgeFrames(edgeFrames)
 
-      await processCodeSource(columns, rows, settings, imageData, frames)
+      await processCodeSource(columns, rows, settings, imageData, frames, edgeData, edgeFrames)
 
       // Update cache entry after processing is complete
       prevSettings.current = settings
@@ -278,6 +293,8 @@ export function AsciiArtGenerator() {
       }
       setCurrentImageData(result.data)
       setCurrentFrames(null)
+      setCurrentEdgeData(result.edgeData ?? null)
+      setCurrentEdgeFrames(null)
 
       // Only generate initial code if pendingCode is empty
       if (pendingCode === '') {
@@ -288,6 +305,7 @@ export function AsciiArtGenerator() {
 
       return {
         imageData: result.data,
+        edgeData: result.edgeData ?? null,
         processedImageUrl: result.processedImageUrl,
       }
     } catch (error) {
@@ -303,12 +321,16 @@ export function AsciiArtGenerator() {
   ): Promise<{
     imageData: AsciiImageData
     frames: AsciiImageData[]
+    edgeData: EdgeData | null
+    edgeFrames: EdgeData[] | null
     processedImageUrl: string | null
   } | null> => {
     const processGif = async (): Promise<{
       frames: number
       imageData: AsciiImageData
       framesData: AsciiImageData[]
+      edgeData: EdgeData | null
+      edgeFramesData: EdgeData[] | null
       processedImageUrl: string | null
     }> => {
       // Convert data URL to binary data
@@ -338,6 +360,8 @@ export function AsciiArtGenerator() {
 
       setCurrentImageData(result.firstFrameData)
       setCurrentFrames(result.frames)
+      setCurrentEdgeData(result.firstFrameEdgeData)
+      setCurrentEdgeFrames(result.edgeFrames)
 
       // Only generate initial code if pendingCode is empty
       if (pendingCode === '') {
@@ -354,6 +378,8 @@ export function AsciiArtGenerator() {
         frames: result.frames.length,
         imageData: result.firstFrameData,
         framesData: result.frames,
+        edgeData: result.firstFrameEdgeData,
+        edgeFramesData: result.edgeFrames,
         processedImageUrl: result.firstFrameUrl,
       }
     }
@@ -366,6 +392,8 @@ export function AsciiArtGenerator() {
       return {
         imageData: result.imageData,
         frames: result.framesData,
+        edgeData: result.edgeData,
+        edgeFrames: result.edgeFramesData,
         processedImageUrl: result.processedImageUrl,
       }
     } catch (_error) {
@@ -381,6 +409,8 @@ export function AsciiArtGenerator() {
     currentSettings: AsciiSettings,
     imageData: AsciiImageData | null,
     frames: AsciiImageData[] | null,
+    edgeData: EdgeData | null,
+    edgeFrames: EdgeData[] | null,
   ) => {
     try {
       const result = await processCodeModule(currentSettings.source.code, {
@@ -388,6 +418,8 @@ export function AsciiArtGenerator() {
         timeout: 5000,
         imageData: imageData,
         frames: frames || undefined,
+        edgeData: edgeData,
+        edgeFrames: edgeFrames,
         settings: currentSettings,
       })
 
@@ -396,11 +428,17 @@ export function AsciiArtGenerator() {
         return
       }
 
-      const newProgram = await createProgramFromProcessor(result, {
-        width: columns,
-        height: rows,
-        frameRate: currentSettings.animation.frameRate,
-      })
+      const newProgram = await createProgramFromProcessor(
+        result,
+        {
+          width: columns,
+          height: rows,
+          frameRate: currentSettings.animation.frameRate,
+        },
+        currentSettings.preprocessing.algorithm === 'sobel'
+          ? { edgeData, edgeFrames }
+          : undefined,
+      )
 
       setProgram(newProgram)
     } catch (error) {
@@ -430,7 +468,11 @@ export function AsciiArtGenerator() {
       prevPreprocessing.brightness !== preprocessing.brightness ||
       prevPreprocessing.invert !== preprocessing.invert ||
       prevPreprocessing.dithering !== preprocessing.dithering ||
-      prevPreprocessing.ditheringAlgorithm !== preprocessing.ditheringAlgorithm
+      prevPreprocessing.ditheringAlgorithm !== preprocessing.ditheringAlgorithm ||
+      prevPreprocessing.algorithm !== preprocessing.algorithm ||
+      prevPreprocessing.sobelEdgeThreshold !== preprocessing.sobelEdgeThreshold ||
+      prevPreprocessing.sobelDogSigma !== preprocessing.sobelDogSigma ||
+      prevPreprocessing.sobelTileThreshold !== preprocessing.sobelTileThreshold
     )
   }
 

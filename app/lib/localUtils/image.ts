@@ -38,3 +38,18 @@ export function getImageValue(data: number[][], x: number, y: number): number {
   }
   return data[x][y]
 }
+
+/**
+ * Gets an edge character override for a given coordinate, or null if none.
+ * Used by Sobel-mode rendering to overlay contour characters on the base pass.
+ */
+export function getEdgeChar(
+  data: { [x: number]: { [y: number]: string } } | null | undefined,
+  x: number,
+  y: number,
+): string | null {
+  if (!data || !data[x] || data[x][y] === undefined) {
+    return null
+  }
+  return data[x][y]
+}

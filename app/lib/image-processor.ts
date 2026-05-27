@@ -7,7 +7,7 @@
  */
 import type { AsciiSettings } from '~/components/ascii-art-generator'
 
-import type { AsciiImageData } from './types'
+import type { AsciiImageData, EdgeData } from './types'
 
 // Types
 export interface CachedMediaData {
@@ -32,6 +32,8 @@ export type DitheringAlgorithm =
   | 'sierra'
   | 'sierraLite'
 
+export type Algorithm = 'standard' | 'sobel'
+
 export type MediaProcessingSettings = {
   characterSet: string
   whitePoint: number
@@ -47,10 +49,12 @@ export type MediaProcessingSettings = {
 
 export type ImageProcessingResult = {
   data: AsciiImageData
+  edgeData?: EdgeData
   width: number
   height: number
   processedImageUrl?: string
   frames?: AsciiImageData[]
+  edgeFrames?: EdgeData[]
   rawFrames?: MediaFrame[]
   frameCount?: number
   sourceFps?: number
@@ -63,11 +67,15 @@ export async function processAnimatedMedia(
   progressCallback?: (frame: number) => void,
 ): Promise<{
   frames: AsciiImageData[]
+  edgeFrames: EdgeData[] | null
   firstFrameData: AsciiImageData
+  firstFrameEdgeData: EdgeData | null
   firstFrameUrl: string | null
 }> {
   const processedFrames: AsciiImageData[] = []
+  const processedEdgeFrames: EdgeData[] = []
   let firstFrameData: AsciiImageData = {}
+  let firstFrameEdgeData: EdgeData | null = null
   let firstFrameUrl: string | null = null
 
   for (let i = 0; i < rawFrames.length; i++) {
@@ -79,15 +87,25 @@ export async function processAnimatedMedia(
 
     if (i === 0) {
       firstFrameData = frameResult.data
+      firstFrameEdgeData = frameResult.edgeData || null
       firstFrameUrl = frameResult.processedImageUrl || null
     }
 
     processedFrames.push(frameResult.data)
+    if (frameResult.edgeData) {
+      processedEdgeFrames.push(frameResult.edgeData)
+    }
   }
+
+  const useEdges =
+    settings.preprocessing.algorithm === 'sobel' &&
+    processedEdgeFrames.length === processedFrames.length
 
   return {
     frames: processedFrames,
+    edgeFrames: useEdges ? processedEdgeFrames : null,
     firstFrameData,
+    firstFrameEdgeData,
     firstFrameUrl,
   }
 }
@@ -121,6 +139,7 @@ export async function processImage(
 
       resolve({
         data: result.data,
+        edgeData: result.edgeData,
         width,
         height,
         processedImageUrl: result.processedImageUrl,
@@ -157,6 +176,7 @@ async function processImageData(
   settings: AsciiSettings,
 ): Promise<{
   data: AsciiImageData
+  edgeData?: EdgeData
   processedImageUrl?: string
 }> {
   const ctx = sourceCanvas.getContext('2d')!
@@ -199,7 +219,19 @@ async function processImageData(
   const pixelData = resizeCtx.getImageData(0, 0, width, height).data
   const data = convertPixelsToAscii(pixelData, width, height, settings)
 
-  return { data, processedImageUrl }
+  let edgeData: EdgeData | undefined
+  if (settings.preprocessing.algorithm === 'sobel') {
+    edgeData = computeSobelEdges(
+      ctx.getImageData(0, 0, srcWidth, srcHeight).data,
+      srcWidth,
+      srcHeight,
+      width,
+      height,
+      settings.preprocessing,
+    )
+  }
+
+  return { data, edgeData, processedImageUrl }
 }
 
 function applyImagePreprocessing(
@@ -501,6 +533,169 @@ function applyOrdered(data: Uint8ClampedArray, width: number, height: number) {
   }
 }
 
+// --- Sobel / Difference-of-Gaussians edge detection ---------------------------
+
+// Acerola-style contour characters. Index = quantized angle bin (0..3).
+// Bin layout: 0 ≈ horizontal edge, 1 ≈ diagonal /, 2 ≈ vertical edge, 3 ≈ diagonal \.
+const EDGE_CHARS = ['_', '/', '|', '\\'] as const
+
+function toGrayscale(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+): Float32Array {
+  const out = new Float32Array(width * height)
+  for (let i = 0, j = 0; i < data.length; i += 4, j += 1) {
+    out[j] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
+  }
+  return out
+}
+
+function gaussianKernel1D(sigma: number): Float32Array {
+  const radius = Math.max(1, Math.ceil(sigma * 3))
+  const size = radius * 2 + 1
+  const kernel = new Float32Array(size)
+  const twoSigmaSq = 2 * sigma * sigma
+  let sum = 0
+  for (let i = 0; i < size; i++) {
+    const x = i - radius
+    kernel[i] = Math.exp(-(x * x) / twoSigmaSq)
+    sum += kernel[i]
+  }
+  for (let i = 0; i < size; i++) kernel[i] /= sum
+  return kernel
+}
+
+function gaussianBlur(
+  src: Float32Array,
+  width: number,
+  height: number,
+  sigma: number,
+): Float32Array {
+  const kernel = gaussianKernel1D(sigma)
+  const radius = (kernel.length - 1) / 2
+  const tmp = new Float32Array(width * height)
+  const out = new Float32Array(width * height)
+
+  // Horizontal
+  for (let y = 0; y < height; y++) {
+    const row = y * width
+    for (let x = 0; x < width; x++) {
+      let acc = 0
+      for (let k = -radius; k <= radius; k++) {
+        const xx = Math.min(width - 1, Math.max(0, x + k))
+        acc += src[row + xx] * kernel[k + radius]
+      }
+      tmp[row + x] = acc
+    }
+  }
+
+  // Vertical
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      let acc = 0
+      for (let k = -radius; k <= radius; k++) {
+        const yy = Math.min(height - 1, Math.max(0, y + k))
+        acc += tmp[yy * width + x] * kernel[k + radius]
+      }
+      out[y * width + x] = acc
+    }
+  }
+
+  return out
+}
+
+function computeSobelEdges(
+  rgba: Uint8ClampedArray,
+  srcWidth: number,
+  srcHeight: number,
+  cols: number,
+  rows: number,
+  preprocessing: AsciiSettings['preprocessing'],
+): EdgeData {
+  const gray = toGrayscale(rgba, srcWidth, srcHeight)
+
+  // Difference of Gaussians: blur at sigma and at k*sigma, subtract.
+  const sigma = Math.max(0.3, preprocessing.sobelDogSigma)
+  const k = 1.6
+  const blurA = gaussianBlur(gray, srcWidth, srcHeight, sigma)
+  const blurB = gaussianBlur(gray, srcWidth, srcHeight, sigma * k)
+  const dog = new Float32Array(gray.length)
+  for (let i = 0; i < gray.length; i++) dog[i] = blurA[i] - blurB[i]
+
+  // Sobel on the DoG image.
+  // Threshold is normalized 0..1, scaled to a magnitude in 0..~1020.
+  const magThreshold = preprocessing.sobelEdgeThreshold * 1020
+
+  // Bin counts per character cell: 4 bins per tile, stored as a flat array.
+  const cellCounts = new Int32Array(cols * rows * 4)
+
+  for (let y = 1; y < srcHeight - 1; y++) {
+    for (let x = 1; x < srcWidth - 1; x++) {
+      const i = y * srcWidth + x
+
+      const tl = dog[i - srcWidth - 1]
+      const t = dog[i - srcWidth]
+      const tr = dog[i - srcWidth + 1]
+      const l = dog[i - 1]
+      const r = dog[i + 1]
+      const bl = dog[i + srcWidth - 1]
+      const b = dog[i + srcWidth]
+      const br = dog[i + srcWidth + 1]
+
+      const gx = -tl - 2 * l - bl + tr + 2 * r + br
+      const gy = -tl - 2 * t - tr + bl + 2 * b + br
+
+      const mag = Math.sqrt(gx * gx + gy * gy)
+      if (mag < magThreshold) continue
+
+      // Quantize angle into 4 bins: 0=horizontal, 1=/, 2=vertical, 3=\
+      // Use direction perpendicular to gradient (the actual edge direction).
+      let angle = Math.atan2(gy, gx) // -pi..pi
+      if (angle < 0) angle += Math.PI // 0..pi (gradient direction is symmetric)
+      // Rotate so 0 -> horizontal edge bin.
+      // Gradient horizontal (angle ~0) means the edge is vertical -> bin 2.
+      // Easier: directly map gradient angle to edge-character bin.
+      // angle 0   (gx>0, gy=0)  -> vertical edge   -> '|'
+      // angle π/4 (gx>0, gy>0)  -> diagonal \      -> '\'
+      // angle π/2 (gx=0, gy>0)  -> horizontal edge -> '_'
+      // angle 3π/4(gx<0, gy>0)  -> diagonal /      -> '/'
+      const slot = Math.floor((angle / Math.PI) * 4 + 0.5) % 4
+      // slot 0 -> '|', 1 -> '\', 2 -> '_', 3 -> '/'
+      const bin =
+        slot === 0 ? 2 /* vertical */ : slot === 1 ? 3 /* \\ */ : slot === 2 ? 0 /* _ */ : 1 /* / */
+
+      const cellX = Math.min(cols - 1, Math.floor((x / srcWidth) * cols))
+      const cellY = Math.min(rows - 1, Math.floor((y / srcHeight) * rows))
+      cellCounts[(cellY * cols + cellX) * 4 + bin] += 1
+    }
+  }
+
+  // Build EdgeData: for each cell, pick the most common bin and emit the
+  // corresponding character if its count exceeds the tile threshold.
+  const tileThreshold = Math.max(1, Math.floor(preprocessing.sobelTileThreshold))
+  const edges: EdgeData = {}
+  for (let cy = 0; cy < rows; cy++) {
+    for (let cx = 0; cx < cols; cx++) {
+      const base = (cy * cols + cx) * 4
+      let bestBin = -1
+      let bestCount = 0
+      for (let b = 0; b < 4; b++) {
+        const c = cellCounts[base + b]
+        if (c > bestCount) {
+          bestCount = c
+          bestBin = b
+        }
+      }
+      if (bestBin >= 0 && bestCount >= tileThreshold) {
+        if (!edges[cx]) edges[cx] = {}
+        edges[cx][cy] = EDGE_CHARS[bestBin]
+      }
+    }
+  }
+  return edges
+}
+
 function applyBayer(data: Uint8ClampedArray, width: number, height: number) {
   // 8x8 Bayer matrix implementation
   const bayerMatrix = [
@@ -548,6 +743,7 @@ function handleGifExtraction(
 
       resolve({
         data: initialFrame.data,
+        edgeData: initialFrame.edgeData,
         width: settings.output.columns,
         height: settings.output.rows,
         processedImageUrl: initialFrame.processedImageUrl,

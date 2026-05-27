@@ -18,11 +18,15 @@ declare global {
   interface Window {
     __MITOS_IMAGE_DATA?: unknown
     __MITOS_FRAMES?: unknown[] | null
+    __MITOS_EDGE_DATA?: unknown
+    __MITOS_EDGE_FRAMES?: unknown[] | null
   }
 
   interface GlobalThis {
     __MITOS_IMAGE_DATA?: unknown
     __MITOS_FRAMES?: unknown[] | null
+    __MITOS_EDGE_DATA?: unknown
+    __MITOS_EDGE_FRAMES?: unknown[] | null
   }
 }
 
@@ -35,6 +39,8 @@ export interface CodeProcessorOptions {
   target?: string
   imageData?: unknown
   frames?: unknown[]
+  edgeData?: unknown
+  edgeFrames?: unknown[] | null
   settings?: unknown
 }
 
@@ -98,7 +104,12 @@ export async function processCodeModule(
       treeShaking: false,
       plugins: [
         createLocalUtilsPlugin(),
-        createImageDataPlugin(options.imageData, options.frames),
+        createImageDataPlugin(
+          options.imageData,
+          options.frames,
+          options.edgeData,
+          options.edgeFrames ?? undefined,
+        ),
         createSettingsPlugin(options.settings),
         createModuleResolutionPlugin(code),
       ],
@@ -197,7 +208,12 @@ function createLocalUtilsPlugin(): Plugin {
   }
 }
 
-function createImageDataPlugin(imageData?: unknown, frames?: unknown[]): Plugin {
+function createImageDataPlugin(
+  imageData?: unknown,
+  frames?: unknown[],
+  edgeData?: unknown,
+  edgeFrames?: unknown[],
+): Plugin {
   return {
     name: 'image-data-plugin',
     setup(build) {
@@ -217,23 +233,31 @@ function createImageDataPlugin(imageData?: unknown, frames?: unknown[]): Plugin 
           if (typeof window !== 'undefined') {
             window.__MITOS_IMAGE_DATA = imageData || {}
             window.__MITOS_FRAMES = frames
+            window.__MITOS_EDGE_DATA = edgeData || {}
+            window.__MITOS_EDGE_FRAMES = edgeFrames ?? null
           }
 
           return {
             loader: 'ts',
             contents: `export const imageData = globalThis.__MITOS_IMAGE_DATA || {};
-export const frames = globalThis.__MITOS_FRAMES || null;`,
+export const frames = globalThis.__MITOS_FRAMES || null;
+export const edgeData = globalThis.__MITOS_EDGE_DATA || {};
+export const edgeFrames = globalThis.__MITOS_EDGE_FRAMES || null;`,
           }
         }
 
         // For small datasets, embed directly (no pretty-printing for size)
         const imageDataStr = imageData ? JSON.stringify(imageData) : '{}'
         const framesStr = frames ? JSON.stringify(frames) : 'null'
+        const edgeDataStr = edgeData ? JSON.stringify(edgeData) : '{}'
+        const edgeFramesStr = edgeFrames ? JSON.stringify(edgeFrames) : 'null'
 
         return {
           loader: 'ts',
           contents: `export const imageData = ${imageDataStr};
-export const frames = ${framesStr};`,
+export const frames = ${framesStr};
+export const edgeData = ${edgeDataStr};
+export const edgeFrames = ${edgeFramesStr};`,
         }
       })
     },
@@ -361,5 +385,7 @@ export function clearStaleImageData(): void {
   if (typeof window !== 'undefined') {
     delete window.__MITOS_IMAGE_DATA
     delete window.__MITOS_FRAMES
+    delete window.__MITOS_EDGE_DATA
+    delete window.__MITOS_EDGE_FRAMES
   }
 }

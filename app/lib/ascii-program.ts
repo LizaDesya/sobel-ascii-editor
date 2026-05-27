@@ -38,6 +38,7 @@
  */
 import type { Program } from './animation'
 import { ModuleProcessingResult } from './code-processor'
+import type { EdgeData } from './types'
 
 export function generateImageCode(): string {
   return `
@@ -74,6 +75,10 @@ function main(pos, context) {
 export async function createProgramFromProcessor(
   processorResult: ModuleProcessingResult,
   settings: { width: number; height: number; frameRate: number },
+  edgeOverlay?: {
+    edgeData: EdgeData | null
+    edgeFrames: EdgeData[] | null
+  },
 ): Promise<Program | null> {
   if (!processorResult.success || !processorResult.module) {
     return null
@@ -119,19 +124,35 @@ export async function createProgramFromProcessor(
     },
 
     main: (pos, context, cursor, buffer, userData) => {
+      let result: string | { char: string } | undefined
       if (hasCustomProgram && programModule && typeof programModule.main === 'function') {
         try {
-          const result = programModule.main(pos, context, cursor, buffer, userData)
-          if (result) return result
+          result = programModule.main(pos, context, cursor, buffer, userData)
         } catch (error) {
           console.error('Error in custom main function:', error)
         }
       }
-
-      // Fallback
-      return {
-        char: ' ',
+      if (result === undefined || result === null) {
+        result = { char: ' ' }
       }
+
+      // Sobel edge overlay: replace the cell's character with an edge contour
+      // character when the preprocessing step detected one for this cell.
+      if (edgeOverlay) {
+        const { edgeData, edgeFrames } = edgeOverlay
+        let edge: string | undefined
+        if (edgeFrames && edgeFrames.length > 0) {
+          const idx = context.frame % edgeFrames.length
+          edge = edgeFrames[idx]?.[pos.x]?.[pos.y]
+        } else if (edgeData) {
+          edge = edgeData[pos.x]?.[pos.y]
+        }
+        if (edge) {
+          return typeof result === 'string' ? { char: edge } : { ...result, char: edge }
+        }
+      }
+
+      return result
     },
   }
 

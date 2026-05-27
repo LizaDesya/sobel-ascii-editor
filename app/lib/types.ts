@@ -24,6 +24,12 @@ export interface AsciiImageData {
   }
 }
 
+export interface EdgeData {
+  [x: number]: {
+    [y: number]: string // edge character override ('_', '|', '/', '\\')
+  }
+}
+
 export const emptyCell: Cell = {
   char: ' ',
 }

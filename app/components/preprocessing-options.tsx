@@ -5,7 +5,7 @@
  *
  * Copyright Oxide Computer Company
  */
-import { DitheringAlgorithm } from '~/lib/image-processor'
+import { Algorithm, DitheringAlgorithm } from '~/lib/image-processor'
 import { InputSwitch } from '~/lib/ui/src'
 import { InputNumber } from '~/lib/ui/src/components/InputNumber/InputNumber'
 import { InputSelect } from '~/lib/ui/src/components/InputSelect/InputSelect'
@@ -21,6 +21,10 @@ interface PreprocessingOptionsProps {
     invert: boolean
     dithering: boolean
     ditheringAlgorithm: DitheringAlgorithm
+    algorithm: Algorithm
+    sobelEdgeThreshold: number
+    sobelDogSigma: number
+    sobelTileThreshold: number
   }
   updateSettings: (
     settings: Partial<{
@@ -31,6 +35,10 @@ interface PreprocessingOptionsProps {
       invert: boolean
       dithering: boolean
       ditheringAlgorithm: DitheringAlgorithm
+      algorithm: Algorithm
+      sobelEdgeThreshold: number
+      sobelDogSigma: number
+      sobelTileThreshold: number
     }>,
   ) => void
 }
@@ -117,6 +125,58 @@ export function PreprocessingOptions({
           >
             Dithering Algorithm
           </InputSelect>
+        </div>
+      )}
+
+      <InputSelect<Algorithm>
+        value={settings.algorithm}
+        onChange={(value) => updateSettings({ algorithm: value as Algorithm })}
+        options={['standard', 'sobel']}
+        labelize={(algorithm) => {
+          switch (algorithm) {
+            case 'standard':
+              return 'Standard'
+            case 'sobel':
+              return 'Sobel'
+            default:
+              return algorithm
+          }
+        }}
+      >
+        Algorithm
+      </InputSelect>
+
+      {settings.algorithm === 'sobel' && (
+        <div className="dedent">
+          <InputNumber
+            min={0}
+            max={1}
+            step={0.05}
+            value={settings.sobelEdgeThreshold}
+            onChange={(value) => updateSettings({ sobelEdgeThreshold: value })}
+          >
+            Edge threshold
+          </InputNumber>
+
+          <InputNumber
+            min={0.5}
+            max={5}
+            step={0.1}
+            value={settings.sobelDogSigma}
+            onChange={(value) => updateSettings({ sobelDogSigma: value })}
+          >
+            DoG sigma
+          </InputNumber>
+
+          <InputNumber
+            min={1}
+            max={64}
+            step={1}
+            value={settings.sobelTileThreshold}
+            onChange={(value) => updateSettings({ sobelTileThreshold: value })}
+          >
+            Tile threshold
+          </InputNumber>
         </div>
       )}
     </Container>
