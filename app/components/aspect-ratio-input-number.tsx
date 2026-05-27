@@ -50,9 +50,9 @@ export const AspectRatioInputNumber = ({
   const [isLocked, setIsLocked] = useState(aspectRatio !== undefined)
 
   const minWidth = 8
-  const maxWidth = 240
+  const maxWidth = 1000
   const minHeight = 4
-  const maxHeight = 120
+  const maxHeight = 1000
 
   // Calculate valid min/max dimension ranges when aspect ratio is locked
   const dimensionRanges = useCallback(() => {

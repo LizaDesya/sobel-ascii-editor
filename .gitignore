@@ -26,3 +26,7 @@ dist-ssr
 claude.md
 
 package-lock.json
+
+# Local reference copy of Garrett Gunnell's AcerolaFX (used while porting the
+# ASCII shader to TS). Not part of this project's source.
+AcerolaFX-main/
