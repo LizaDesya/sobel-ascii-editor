@@ -22,8 +22,11 @@ interface PreprocessingOptionsProps {
     dithering: boolean
     ditheringAlgorithm: DitheringAlgorithm
     algorithm: Algorithm
-    sobelEdgeThreshold: number
     sobelDogSigma: number
+    sobelDogK: number
+    sobelDogTau: number
+    sobelDogThreshold: number
+    sobelKernelSize: number
     sobelTileThreshold: number
   }
   updateSettings: (
@@ -36,8 +39,11 @@ interface PreprocessingOptionsProps {
       dithering: boolean
       ditheringAlgorithm: DitheringAlgorithm
       algorithm: Algorithm
-      sobelEdgeThreshold: number
       sobelDogSigma: number
+      sobelDogK: number
+      sobelDogTau: number
+      sobelDogThreshold: number
+      sobelKernelSize: number
       sobelTileThreshold: number
     }>,
   ) => void
@@ -149,17 +155,7 @@ export function PreprocessingOptions({
       {settings.algorithm === 'sobel' && (
         <div className="dedent">
           <InputNumber
-            min={0}
-            max={1}
-            step={0.05}
-            value={settings.sobelEdgeThreshold}
-            onChange={(value) => updateSettings({ sobelEdgeThreshold: value })}
-          >
-            Edge threshold
-          </InputNumber>
-
-          <InputNumber
-            min={0.5}
+            min={0.1}
             max={5}
             step={0.1}
             value={settings.sobelDogSigma}
@@ -170,6 +166,46 @@ export function PreprocessingOptions({
 
           <InputNumber
             min={1}
+            max={5}
+            step={0.1}
+            value={settings.sobelDogK}
+            onChange={(value) => updateSettings({ sobelDogK: value })}
+          >
+            DoG sigma scale
+          </InputNumber>
+
+          <InputNumber
+            min={0}
+            max={1.1}
+            step={0.05}
+            value={settings.sobelDogTau}
+            onChange={(value) => updateSettings({ sobelDogTau: value })}
+          >
+            DoG tau
+          </InputNumber>
+
+          <InputNumber
+            min={0.001}
+            max={0.1}
+            step={0.001}
+            value={settings.sobelDogThreshold}
+            onChange={(value) => updateSettings({ sobelDogThreshold: value })}
+          >
+            DoG threshold
+          </InputNumber>
+
+          <InputNumber
+            min={1}
+            max={10}
+            step={1}
+            value={settings.sobelKernelSize}
+            onChange={(value) => updateSettings({ sobelKernelSize: value })}
+          >
+            Kernel size
+          </InputNumber>
+
+          <InputNumber
+            min={0}
             max={64}
             step={1}
             value={settings.sobelTileThreshold}

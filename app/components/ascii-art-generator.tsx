@@ -60,8 +60,11 @@ export interface AsciiSettings {
     dithering: boolean
     ditheringAlgorithm: DitheringAlgorithm
     algorithm: Algorithm
-    sobelEdgeThreshold: number
     sobelDogSigma: number
+    sobelDogK: number
+    sobelDogTau: number
+    sobelDogThreshold: number
+    sobelKernelSize: number
     sobelTileThreshold: number
   }
   output: {
@@ -470,8 +473,11 @@ export function AsciiArtGenerator() {
       prevPreprocessing.dithering !== preprocessing.dithering ||
       prevPreprocessing.ditheringAlgorithm !== preprocessing.ditheringAlgorithm ||
       prevPreprocessing.algorithm !== preprocessing.algorithm ||
-      prevPreprocessing.sobelEdgeThreshold !== preprocessing.sobelEdgeThreshold ||
       prevPreprocessing.sobelDogSigma !== preprocessing.sobelDogSigma ||
+      prevPreprocessing.sobelDogK !== preprocessing.sobelDogK ||
+      prevPreprocessing.sobelDogTau !== preprocessing.sobelDogTau ||
+      prevPreprocessing.sobelDogThreshold !== preprocessing.sobelDogThreshold ||
+      prevPreprocessing.sobelKernelSize !== preprocessing.sobelKernelSize ||
       prevPreprocessing.sobelTileThreshold !== preprocessing.sobelTileThreshold
     )
   }

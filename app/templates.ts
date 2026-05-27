@@ -30,8 +30,11 @@ export const DEFAULT_SETTINGS: AsciiSettings = {
     dithering: false,
     ditheringAlgorithm: 'floydSteinberg',
     algorithm: 'sobel',
-    sobelEdgeThreshold: 0.5,
-    sobelDogSigma: 1.4,
+    sobelDogSigma: 2.0,
+    sobelDogK: 1.6,
+    sobelDogTau: 1.0,
+    sobelDogThreshold: 0.005,
+    sobelKernelSize: 2,
     sobelTileThreshold: 8,
   },
   output: {

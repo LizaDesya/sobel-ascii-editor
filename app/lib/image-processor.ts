@@ -221,10 +221,22 @@ async function processImageData(
 
   let edgeData: EdgeData | undefined
   if (settings.preprocessing.algorithm === 'sobel') {
+    // Acerola dispatches a compute shader at BUFFER_WIDTH/8 × BUFFER_HEIGHT/8
+    // with 8×8 workgroups, so every glyph tile is exactly 64 pixels. Resample the
+    // preprocessed canvas to (cols*8 × rows*8) so our histogram vote sees the
+    // same shape, regardless of the source image's resolution.
+    const sobelW = width * 8
+    const sobelH = height * 8
+    const sobelCanvas = document.createElement('canvas')
+    sobelCanvas.width = sobelW
+    sobelCanvas.height = sobelH
+    const sobelCtx = sobelCanvas.getContext('2d')!
+    sobelCtx.imageSmoothingEnabled = true
+    sobelCtx.drawImage(sourceCanvas, 0, 0, sobelW, sobelH)
     edgeData = computeSobelEdges(
-      ctx.getImageData(0, 0, srcWidth, srcHeight).data,
-      srcWidth,
-      srcHeight,
+      sobelCtx.getImageData(0, 0, sobelW, sobelH).data,
+      sobelW,
+      sobelH,
       width,
       height,
       settings.preprocessing,
@@ -534,11 +546,18 @@ function applyOrdered(data: Uint8ClampedArray, width: number, height: number) {
 }
 
 // --- Sobel / Difference-of-Gaussians edge detection ---------------------------
+// Ported from Garrett Gunnell's AcerolaFX_ASCII.fx ("I Tried Turning Games Into
+// Text"). The pipeline is: luminance → two separable Gaussians at σ and σ·k →
+// binarize `(blurA - τ·blurB) ≥ threshold` → separable Scharr (3,10,3 / 3,0,-3)
+// on the 0/1 mask → atan2(Gy, Gx) → bucket angle into 4 directions → per-tile
+// majority vote over an 8×8 cell.
 
-// Acerola-style contour characters. Index = quantized angle bin (0..3).
-// Bin layout: 0 ≈ horizontal edge, 1 ≈ diagonal /, 2 ≈ vertical edge, 3 ≈ diagonal \.
-const EDGE_CHARS = ['_', '/', '|', '\\'] as const
+// Direction index → glyph. Matches Acerola's edgesASCII.png column layout:
+//   0 = vertical edge `|`,  1 = horizontal edge `_`,  2 = `/`,  3 = `\`
+const EDGE_CHARS = ['|', '_', '/', '\\'] as const
 
+// Grayscale in [0, 1] using Rec. 601 luma weights, matching Acerola's
+// Common::Luminance on saturated RGB.
 function toGrayscale(
   data: Uint8ClampedArray,
   width: number,
@@ -546,13 +565,12 @@ function toGrayscale(
 ): Float32Array {
   const out = new Float32Array(width * height)
   for (let i = 0, j = 0; i < data.length; i += 4, j += 1) {
-    out[j] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
+    out[j] = (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]) / 255
   }
   return out
 }
 
-function gaussianKernel1D(sigma: number): Float32Array {
-  const radius = Math.max(1, Math.ceil(sigma * 3))
+function gaussianKernel1D(sigma: number, radius: number): Float32Array {
   const size = radius * 2 + 1
   const kernel = new Float32Array(size)
   const twoSigmaSq = 2 * sigma * sigma
@@ -566,43 +584,58 @@ function gaussianKernel1D(sigma: number): Float32Array {
   return kernel
 }
 
-function gaussianBlur(
+// Separable two-sigma Gaussian blur in one allocation pass. Returns the pair
+// (blurA, blurB) blurred at σ and σ·k respectively. Acerola packs these into
+// the R/G channels of an intermediate texture; we just return two arrays.
+function gaussianBlurPair(
   src: Float32Array,
   width: number,
   height: number,
   sigma: number,
-): Float32Array {
-  const kernel = gaussianKernel1D(sigma)
-  const radius = (kernel.length - 1) / 2
-  const tmp = new Float32Array(width * height)
-  const out = new Float32Array(width * height)
+  kRatio: number,
+  radius: number,
+): { a: Float32Array; b: Float32Array } {
+  const kA = gaussianKernel1D(sigma, radius)
+  const kB = gaussianKernel1D(sigma * kRatio, radius)
+  const tmpA = new Float32Array(width * height)
+  const tmpB = new Float32Array(width * height)
+  const outA = new Float32Array(width * height)
+  const outB = new Float32Array(width * height)
 
   // Horizontal
   for (let y = 0; y < height; y++) {
     const row = y * width
     for (let x = 0; x < width; x++) {
-      let acc = 0
+      let accA = 0
+      let accB = 0
       for (let k = -radius; k <= radius; k++) {
-        const xx = Math.min(width - 1, Math.max(0, x + k))
-        acc += src[row + xx] * kernel[k + radius]
+        const xx = x + k < 0 ? 0 : x + k >= width ? width - 1 : x + k
+        const v = src[row + xx]
+        accA += v * kA[k + radius]
+        accB += v * kB[k + radius]
       }
-      tmp[row + x] = acc
+      tmpA[row + x] = accA
+      tmpB[row + x] = accB
     }
   }
 
   // Vertical
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      let acc = 0
+      let accA = 0
+      let accB = 0
       for (let k = -radius; k <= radius; k++) {
-        const yy = Math.min(height - 1, Math.max(0, y + k))
-        acc += tmp[yy * width + x] * kernel[k + radius]
+        const yy = y + k < 0 ? 0 : y + k >= height ? height - 1 : y + k
+        const idx = yy * width + x
+        accA += tmpA[idx] * kA[k + radius]
+        accB += tmpB[idx] * kB[k + radius]
       }
-      out[y * width + x] = acc
+      outA[y * width + x] = accA
+      outB[y * width + x] = accB
     }
   }
 
-  return out
+  return { a: outA, b: outB }
 }
 
 function computeSobelEdges(
@@ -615,81 +648,113 @@ function computeSobelEdges(
 ): EdgeData {
   const gray = toGrayscale(rgba, srcWidth, srcHeight)
 
-  // Difference of Gaussians: blur at sigma and at k*sigma, subtract.
-  const sigma = Math.max(0.3, preprocessing.sobelDogSigma)
-  const k = 1.6
-  const blurA = gaussianBlur(gray, srcWidth, srcHeight, sigma)
-  const blurB = gaussianBlur(gray, srcWidth, srcHeight, sigma * k)
-  const dog = new Float32Array(gray.length)
-  for (let i = 0; i < gray.length; i++) dog[i] = blurA[i] - blurB[i]
+  const sigma = Math.max(0.1, preprocessing.sobelDogSigma)
+  const kRatio = Math.max(1.0, preprocessing.sobelDogK)
+  const tau = preprocessing.sobelDogTau
+  const dogThreshold = preprocessing.sobelDogThreshold
+  const radius = Math.max(1, Math.floor(preprocessing.sobelKernelSize))
 
-  // Sobel on the DoG image.
-  // Threshold is normalized 0..1, scaled to a magnitude in 0..~1020.
-  const magThreshold = preprocessing.sobelEdgeThreshold * 1020
+  // Pass 1: two horizontal+vertical Gaussian blurs.
+  const { a: blurA, b: blurB } = gaussianBlurPair(
+    gray,
+    srcWidth,
+    srcHeight,
+    sigma,
+    kRatio,
+    radius,
+  )
 
-  // Bin counts per character cell: 4 bins per tile, stored as a flat array.
+  // Pass 2: weighted difference, binarized at the user threshold. This is
+  // Acerola's `D = (blur.x - τ·blur.y) >= _Threshold ? 1 : 0`.
+  const mask = new Float32Array(gray.length)
+  for (let i = 0; i < gray.length; i++) {
+    mask[i] = blurA[i] - tau * blurB[i] >= dogThreshold ? 1 : 0
+  }
+
+  // Pass 3: separable Scharr on the binary mask.
+  //   Horizontal pass: Gx_row = 3*l - 3*r ; Gy_row = 3*l + 10*c + 3*r
+  //   Vertical pass:   Gx     = 3*Gx_top + 10*Gx_cur + 3*Gx_bot
+  //                    Gy     = 3*Gy_top - 3*Gy_bot
+  // We fuse both passes per pixel without materializing the intermediate
+  // texture — small but worth it for image-sized arrays.
+
+  // Tile geometry: glyph cells are exactly 8×8 src pixels because
+  // processImageData resampled the source to (cols*8 × rows*8). Each cell
+  // therefore has 64 pixels, matching Acerola's 8×8 compute workgroup.
+  const cellPx = 8
   const cellCounts = new Int32Array(cols * rows * 4)
 
+  // Pre-fetch row offsets to avoid repeated multiplies in the hot loop.
   for (let y = 1; y < srcHeight - 1; y++) {
+    const rowAbove = (y - 1) * srcWidth
+    const rowCur = y * srcWidth
+    const rowBelow = (y + 1) * srcWidth
+    const cellY = Math.min(rows - 1, (y / cellPx) | 0)
+
     for (let x = 1; x < srcWidth - 1; x++) {
-      const i = y * srcWidth + x
+      // Sample 3×3 from the binary mask.
+      const tl = mask[rowAbove + x - 1]
+      const tc = mask[rowAbove + x]
+      const tr = mask[rowAbove + x + 1]
+      const ml = mask[rowCur + x - 1]
+      // mc (rowCur + x) is unused — the Scharr 3×3 has a 0 weight in the
+      // center column for Gx and the center row for Gy, so the center pixel
+      // never contributes when we fuse the separable form into one expression.
+      const mr = mask[rowCur + x + 1]
+      const bl = mask[rowBelow + x - 1]
+      const bc = mask[rowBelow + x]
+      const br = mask[rowBelow + x + 1]
 
-      const tl = dog[i - srcWidth - 1]
-      const t = dog[i - srcWidth]
-      const tr = dog[i - srcWidth + 1]
-      const l = dog[i - 1]
-      const r = dog[i + 1]
-      const bl = dog[i + srcWidth - 1]
-      const b = dog[i + srcWidth]
-      const br = dog[i + srcWidth + 1]
+      // Separable Scharr — equivalent to the 3×3 kernels
+      //   Gx = [-3 0 3; -10 0 10; -3 0 3]
+      //   Gy = [-3 -10 -3; 0 0 0; 3 10 3]
+      const gx = -3 * tl + 3 * tr - 10 * ml + 10 * mr - 3 * bl + 3 * br
+      const gy = -3 * tl - 10 * tc - 3 * tr + 3 * bl + 10 * bc + 3 * br
 
-      const gx = -tl - 2 * l - bl + tr + 2 * r + br
-      const gy = -tl - 2 * t - tr + bl + 2 * b + br
+      // HLSL's `1 - isnan(atan2(0,0))` flag — in JS Math.atan2(0,0) returns 0,
+      // so we have to test the inputs directly instead.
+      if (gx === 0 && gy === 0) continue
 
-      const mag = Math.sqrt(gx * gx + gy * gy)
-      if (mag < magThreshold) continue
+      const theta = Math.atan2(gy, gx)
+      const absTheta = Math.abs(theta) / Math.PI
 
-      // Quantize angle into 4 bins: 0=horizontal, 1=/, 2=vertical, 3=\
-      // Use direction perpendicular to gradient (the actual edge direction).
-      let angle = Math.atan2(gy, gx) // -pi..pi
-      if (angle < 0) angle += Math.PI // 0..pi (gradient direction is symmetric)
-      // Rotate so 0 -> horizontal edge bin.
-      // Gradient horizontal (angle ~0) means the edge is vertical -> bin 2.
-      // Easier: directly map gradient angle to edge-character bin.
-      // angle 0   (gx>0, gy=0)  -> vertical edge   -> '|'
-      // angle π/4 (gx>0, gy>0)  -> diagonal \      -> '\'
-      // angle π/2 (gx=0, gy>0)  -> horizontal edge -> '_'
-      // angle 3π/4(gx<0, gy>0)  -> diagonal /      -> '/'
-      const slot = Math.floor((angle / Math.PI) * 4 + 0.5) % 4
-      // slot 0 -> '|', 1 -> '\', 2 -> '_', 3 -> '/'
-      const bin =
-        slot === 0 ? 2 /* vertical */ : slot === 1 ? 3 /* \\ */ : slot === 2 ? 0 /* _ */ : 1 /* / */
+      let dir = -1
+      if (absTheta <= 0.05 || absTheta > 0.9) {
+        dir = 0 // vertical edge `|`
+      } else if (absTheta > 0.45 && absTheta < 0.55) {
+        dir = 1 // horizontal edge `_`
+      } else if (absTheta > 0.05 && absTheta < 0.45) {
+        dir = theta > 0 ? 3 : 2 // diagonal `\` or `/`
+      } else if (absTheta > 0.55 && absTheta < 0.9) {
+        dir = theta > 0 ? 2 : 3
+      }
+      if (dir < 0) continue
 
-      const cellX = Math.min(cols - 1, Math.floor((x / srcWidth) * cols))
-      const cellY = Math.min(rows - 1, Math.floor((y / srcHeight) * rows))
-      cellCounts[(cellY * cols + cellX) * 4 + bin] += 1
+      const cellX = Math.min(cols - 1, (x / cellPx) | 0)
+      cellCounts[(cellY * cols + cellX) * 4 + dir] += 1
     }
   }
 
-  // Build EdgeData: for each cell, pick the most common bin and emit the
-  // corresponding character if its count exceeds the tile threshold.
-  const tileThreshold = Math.max(1, Math.floor(preprocessing.sobelTileThreshold))
+  // Per-tile vote, matching Acerola's groupshared histogram + maxBucket logic,
+  // but explicitly ignoring the -1 ("no direction") entries that Acerola's
+  // shader leaks into `buckets[-1]` via undefined indexing.
+  const tileThreshold = Math.max(0, Math.floor(preprocessing.sobelTileThreshold))
   const edges: EdgeData = {}
   for (let cy = 0; cy < rows; cy++) {
     for (let cx = 0; cx < cols; cx++) {
       const base = (cy * cols + cx) * 4
-      let bestBin = -1
+      let bestDir = -1
       let bestCount = 0
-      for (let b = 0; b < 4; b++) {
-        const c = cellCounts[base + b]
+      for (let d = 0; d < 4; d++) {
+        const c = cellCounts[base + d]
         if (c > bestCount) {
           bestCount = c
-          bestBin = b
+          bestDir = d
         }
       }
-      if (bestBin >= 0 && bestCount >= tileThreshold) {
+      if (bestDir >= 0 && bestCount >= tileThreshold) {
         if (!edges[cx]) edges[cx] = {}
-        edges[cx][cy] = EDGE_CHARS[bestBin]
+        edges[cx][cy] = EDGE_CHARS[bestDir]
       }
     }
   }
