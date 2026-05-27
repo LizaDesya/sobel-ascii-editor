@@ -238,27 +238,23 @@ async function generateCharacterShapes(
     written++
   }
 
-  // Per-dimension max-normalize, with a floor on the divisor. The floor
-  // matters: if some dim happens to have a small charset max (no glyph fills
-  // that exact spot — particularly common for the centre-column circles in
-  // the 3×3 layout), straight per-dim normalization amplifies that dim by
-  // 5–10×. Then any noise in the per-cell sampling vector (which isn't
-  // similarly normalized) at that dim dominates the nearest-neighbour
-  // distance and pulls dark cells toward dense glyphs — the effect grows
-  // worse with the contrast slider, which scales noise further. A 0.3 floor
-  // caps the per-dim amplification at ~3.3× and removes the bias.
-  const MAX_FLOOR = 0.3
-  const maxes = new Float32Array(dim)
-  for (let d = 0; d < dim; d++) maxes[d] = MAX_FLOOR
-  for (let i = 0; i < written; i++) {
-    for (let d = 0; d < dim; d++) {
-      const v = raw[i * dim + d]
-      if (v > maxes[d]) maxes[d] = v
-    }
-  }
-  for (let i = 0; i < written; i++) {
-    for (let d = 0; d < dim; d++) raw[i * dim + d] /= maxes[d]
-  }
+  // No per-dim normalization. The Python reference (and an earlier version
+  // here) divides each dim by its charset-wide max — but the cell vector is
+  // never normalized the same way, so the table side gets amplified relative
+  // to the cell side. Dims where no glyph fills much (centre-column circles
+  // in 3×3, gap regions in 2×3) end up amplified 3–10×, and any single-
+  // circle noise in a dark cell at one of those dims lands close to whichever
+  // glyph happens to spike there in normalized space. Past commits papered
+  // over this with a per-dim floor (capping amplification at ~3×) and a
+  // brightness threshold that short-circuited dark cells to space, but both
+  // were tuned magic numbers that re-broke on different images. Comparing
+  // raw luminance vectors instead is symmetric by construction: dark cells
+  // naturally land near space / `.` / `,` (smallest L2 norm), dim textured
+  // cells land near low-density chars, and bright cells land near dense
+  // chars — no thresholds, no asymmetric amplification.
+  // (Python's reference algorithm gets away with per-dim normalization
+  // because it pairs it with a directional-contrast pass that pre-amplifies
+  // the cell vector at edges. We don't implement that pass.)
 
   return { chars, dim, vectors: raw }
 }
@@ -330,29 +326,20 @@ export async function computeShapePlacements(
   const dim = circles.length
   const cellVec = new Float32Array(dim)
   const result: ShapeData = {}
-  // When blanks are enabled, cells whose strongest circle is below this
-  // threshold short-circuit straight to space. Two competing failure modes:
-  //   • Too high: dim-but-textured regions (e.g. Saturn's rings after the
-  //     8× shape-canvas resample bilinear-smooths fine bright/dark stripes
-  //     together) get all 9 circles below the threshold and produce a
-  //     horizontal streak of spaces that propagates across the row even
-  //     though the user can see content in the underlying image.
-  //   • Too low: dark sky cells with single-circle JPEG/ringing noise
-  //     outvote space in nearest-neighbour and flicker between dense
-  //     glyphs as brightness/contrast move (the original bug 58b700d).
-  // 0.005 is below the JPEG-ringing noise floor on a typical 8-bit image
-  // (1.3/255) but well clear of any genuinely-textured cell, so it gates
-  // only cells that are essentially numerically zero across all circles.
-  const DARK_GATE = 0.005
+  // No dark-cell gate: nearest-neighbour against raw shape vectors picks
+  // space (or whichever low-norm char is in the set) for genuinely empty
+  // cells on its own. See the comment on the removed per-dim normalization
+  // in generateCharacterShapes for why the previous DARK_GATE + MAX_FLOOR
+  // pair existed and why both go together. (`allowBlank` is still in use
+  // above: it controls whether space is included in the charset.)
   for (let col = 0; col < cols; col++) {
     const cellOriginX = col * cellPxW
     const column: { [y: number]: string } = {}
     for (let row = 0; row < rows; row++) {
       const cellOriginY = row * cellPxH
-      let cellMax = 0
       for (let c = 0; c < dim; c++) {
         const circle = circles[c]
-        const v = sampleCircleAvg(
+        cellVec[c] = sampleCircleAvg(
           gray,
           srcWidth,
           srcHeight,
@@ -360,12 +347,6 @@ export async function computeShapePlacements(
           cellOriginY + circle.cy * cellPxH,
           circle.r * Math.min(cellPxW, cellPxH),
         )
-        cellVec[c] = v
-        if (v > cellMax) cellMax = v
-      }
-      if (allowBlank && cellMax < DARK_GATE) {
-        column[row] = ' '
-        continue
       }
       applyGlobalContrast(cellVec, contrastExp)
       column[row] = findNearestChar(table, cellVec)
