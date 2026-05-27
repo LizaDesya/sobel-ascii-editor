@@ -552,9 +552,13 @@ function applyOrdered(data: Uint8ClampedArray, width: number, height: number) {
 // on the 0/1 mask → atan2(Gy, Gx) → bucket angle into 4 directions → per-tile
 // majority vote over an 8×8 cell.
 
-// Direction index → glyph. Matches Acerola's edgesASCII.png column layout:
-//   0 = vertical edge `|`,  1 = horizontal edge `_`,  2 = `/`,  3 = `\`
-const EDGE_CHARS = ['|', '_', '/', '\\'] as const
+// Direction index → glyph. The edgesASCII.png atlas stores glyphs in column
+// order `| - / \` (cols 8/16/24/32), but the shader samples it with
+// `localUV.y = 8 - (tid.y % 8)` — a vertical flip that mirrors each glyph on
+// screen. Vertical-mirroring `/` gives `\` and vice versa, so on-screen the
+// effective mapping is dir 2 = `\`, dir 3 = `/`. We render through a real
+// font (no texture flip), so we have to apply that swap here.
+const EDGE_CHARS = ['|', '_', '\\', '/'] as const
 
 // Grayscale in [0, 1] using Rec. 601 luma weights, matching Acerola's
 // Common::Luminance on saturated RGB.
@@ -724,9 +728,13 @@ function computeSobelEdges(
       } else if (absTheta > 0.45 && absTheta < 0.55) {
         dir = 1 // horizontal edge `_`
       } else if (absTheta > 0.05 && absTheta < 0.45) {
-        dir = theta > 0 ? 3 : 2 // diagonal `\` or `/`
-      } else if (absTheta > 0.55 && absTheta < 0.9) {
+        // θ near +π/4 → gradient down-right → edge `\` (dir 2)
+        // θ near −π/4 → gradient up-right   → edge `/` (dir 3)
         dir = theta > 0 ? 2 : 3
+      } else if (absTheta > 0.55 && absTheta < 0.9) {
+        // θ near +3π/4 → gradient down-left → edge `/` (dir 3)
+        // θ near −3π/4 → gradient up-left   → edge `\` (dir 2)
+        dir = theta > 0 ? 3 : 2
       }
       if (dir < 0) continue
 

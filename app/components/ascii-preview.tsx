@@ -317,7 +317,7 @@ export function AsciiPreview({
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
-        className="relative flex flex-1 items-center justify-center overflow-auto"
+        className="relative flex-1 overflow-auto"
         style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
       >
         {isExporting && (
@@ -330,6 +330,11 @@ export function AsciiPreview({
             </div>
           </div>
         )}
+        {/* Inner wrapper grows to at least viewport size so the centering
+            works when content is small, but expands and lets the outer
+            scroll when content is larger than the viewport (avoids the
+            classic flex-center + overflow clipping bug). */}
+        <div className="flex min-h-full min-w-full items-center justify-center">
         <div
           className="duration-50 relative transform-gpu overflow-hidden rounded-[1%] transition-transform ease-out"
           style={{
@@ -377,6 +382,7 @@ export function AsciiPreview({
               />
             )}
           </div>
+        </div>
         </div>
       </div>
       {settings.animationLength > 1 && (
