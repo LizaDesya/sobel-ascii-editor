@@ -29,7 +29,7 @@ import {
   processAnimatedMedia,
   processImage,
 } from '~/lib/image-processor'
-import type { AsciiImageData, EdgeData } from '~/lib/types'
+import type { AsciiImageData, EdgeData, ShapeData } from '~/lib/types'
 import { cn } from '~/lib/utils'
 import { DEFAULT_SETTINGS, TEMPLATES, TemplateType } from '~/templates'
 
@@ -40,6 +40,7 @@ import { DelayedSpinner } from './spinner'
 
 export type GridType = 'none' | 'horizontal' | 'vertical' | 'both'
 export type ColorMappingType = 'brightness' | 'hue' | 'saturation'
+export type PlacementMode = 'value' | 'shape'
 
 export interface AsciiSettings {
   meta: {
@@ -66,6 +67,8 @@ export interface AsciiSettings {
     sobelDogThreshold: number
     sobelKernelSize: number
     sobelTileThreshold: number
+    placementMode: PlacementMode
+    shapeContrast: number
   }
   output: {
     characterSet: string
@@ -108,10 +111,12 @@ export function AsciiArtGenerator() {
   const [currentFrames, setCurrentFrames] = useState<AsciiImageData[] | null>(null)
   const [currentEdgeData, setCurrentEdgeData] = useState<EdgeData | null>(null)
   const [currentEdgeFrames, setCurrentEdgeFrames] = useState<EdgeData[] | null>(null)
+  const [currentShapeData, setCurrentShapeData] = useState<ShapeData | null>(null)
+  const [currentShapeFrames, setCurrentShapeFrames] = useState<ShapeData[] | null>(null)
 
   // Processing state
   const [isExporting, setIsExporting] = useState(false)
-  const [_isProcessing, setIsProcessing] = useState(false)
+  const [isProcessing, setIsProcessing] = useState(false)
   const [showCodeSidebar, setShowCodeSidebar] = useState(false)
   const [showSidebar, setShowSidebar] = useState(true)
 
@@ -223,6 +228,7 @@ export function AsciiArtGenerator() {
     if (!settings.source.data && !settings.source.code) {
       return
     }
+    setIsProcessing(true)
     try {
       const columns = settings.output.columns
       const rows = settings.output.rows
@@ -236,6 +242,8 @@ export function AsciiArtGenerator() {
       let frames = currentFrames
       let edgeData = currentEdgeData
       let edgeFrames = currentEdgeFrames
+      let shapeData = currentShapeData
+      let shapeFrames = currentShapeFrames
 
       if (shouldProcess && settings.source.data) {
         if (settings.source.data.includes('data:image/gif')) {
@@ -250,6 +258,8 @@ export function AsciiArtGenerator() {
             frames = gifResult.frames
             edgeData = gifResult.edgeData
             edgeFrames = gifResult.edgeFrames
+            shapeData = gifResult.shapeData
+            shapeFrames = gifResult.shapeFrames
           }
         } else {
           const staticResult = await processStaticImage(settings.source.data, settings)
@@ -263,6 +273,8 @@ export function AsciiArtGenerator() {
             frames = null
             edgeData = staticResult.edgeData
             edgeFrames = null
+            shapeData = staticResult.shapeData
+            shapeFrames = null
           }
         }
       }
@@ -271,8 +283,20 @@ export function AsciiArtGenerator() {
       setCurrentFrames(frames)
       setCurrentEdgeData(edgeData)
       setCurrentEdgeFrames(edgeFrames)
+      setCurrentShapeData(shapeData)
+      setCurrentShapeFrames(shapeFrames)
 
-      await processCodeSource(columns, rows, settings, imageData, frames, edgeData, edgeFrames)
+      await processCodeSource(
+        columns,
+        rows,
+        settings,
+        imageData,
+        frames,
+        edgeData,
+        edgeFrames,
+        shapeData,
+        shapeFrames,
+      )
 
       // Update cache entry after processing is complete
       prevSettings.current = settings
@@ -298,6 +322,8 @@ export function AsciiArtGenerator() {
       setCurrentFrames(null)
       setCurrentEdgeData(result.edgeData ?? null)
       setCurrentEdgeFrames(null)
+      setCurrentShapeData(result.shapeData ?? null)
+      setCurrentShapeFrames(null)
 
       // Only generate initial code if pendingCode is empty
       if (pendingCode === '') {
@@ -309,6 +335,7 @@ export function AsciiArtGenerator() {
       return {
         imageData: result.data,
         edgeData: result.edgeData ?? null,
+        shapeData: result.shapeData ?? null,
         processedImageUrl: result.processedImageUrl,
       }
     } catch (error) {
@@ -326,6 +353,8 @@ export function AsciiArtGenerator() {
     frames: AsciiImageData[]
     edgeData: EdgeData | null
     edgeFrames: EdgeData[] | null
+    shapeData: ShapeData | null
+    shapeFrames: ShapeData[] | null
     processedImageUrl: string | null
   } | null> => {
     const processGif = async (): Promise<{
@@ -334,6 +363,8 @@ export function AsciiArtGenerator() {
       framesData: AsciiImageData[]
       edgeData: EdgeData | null
       edgeFramesData: EdgeData[] | null
+      shapeData: ShapeData | null
+      shapeFramesData: ShapeData[] | null
       processedImageUrl: string | null
     }> => {
       // Convert data URL to binary data
@@ -365,6 +396,8 @@ export function AsciiArtGenerator() {
       setCurrentFrames(result.frames)
       setCurrentEdgeData(result.firstFrameEdgeData)
       setCurrentEdgeFrames(result.edgeFrames)
+      setCurrentShapeData(result.firstFrameShapeData)
+      setCurrentShapeFrames(result.shapeFrames)
 
       // Only generate initial code if pendingCode is empty
       if (pendingCode === '') {
@@ -383,6 +416,8 @@ export function AsciiArtGenerator() {
         framesData: result.frames,
         edgeData: result.firstFrameEdgeData,
         edgeFramesData: result.edgeFrames,
+        shapeData: result.firstFrameShapeData,
+        shapeFramesData: result.shapeFrames,
         processedImageUrl: result.firstFrameUrl,
       }
     }
@@ -397,6 +432,8 @@ export function AsciiArtGenerator() {
         frames: result.framesData,
         edgeData: result.edgeData,
         edgeFrames: result.edgeFramesData,
+        shapeData: result.shapeData,
+        shapeFrames: result.shapeFramesData,
         processedImageUrl: result.processedImageUrl,
       }
     } catch (_error) {
@@ -414,6 +451,8 @@ export function AsciiArtGenerator() {
     frames: AsciiImageData[] | null,
     edgeData: EdgeData | null,
     edgeFrames: EdgeData[] | null,
+    shapeData: ShapeData | null,
+    shapeFrames: ShapeData[] | null,
   ) => {
     try {
       const result = await processCodeModule(currentSettings.source.code, {
@@ -431,6 +470,7 @@ export function AsciiArtGenerator() {
         return
       }
 
+      const placementMode = currentSettings.preprocessing.placementMode
       const newProgram = await createProgramFromProcessor(
         result,
         {
@@ -438,9 +478,10 @@ export function AsciiArtGenerator() {
           height: rows,
           frameRate: currentSettings.animation.frameRate,
         },
-        currentSettings.preprocessing.algorithm === 'sobel'
+        placementMode === 'value' && currentSettings.preprocessing.algorithm === 'sobel'
           ? { edgeData, edgeFrames }
           : undefined,
+        placementMode === 'shape' ? { shapeData, shapeFrames } : undefined,
       )
 
       setProgram(newProgram)
@@ -478,7 +519,9 @@ export function AsciiArtGenerator() {
       prevPreprocessing.sobelDogTau !== preprocessing.sobelDogTau ||
       prevPreprocessing.sobelDogThreshold !== preprocessing.sobelDogThreshold ||
       prevPreprocessing.sobelKernelSize !== preprocessing.sobelKernelSize ||
-      prevPreprocessing.sobelTileThreshold !== preprocessing.sobelTileThreshold
+      prevPreprocessing.sobelTileThreshold !== preprocessing.sobelTileThreshold ||
+      prevPreprocessing.placementMode !== preprocessing.placementMode ||
+      prevPreprocessing.shapeContrast !== preprocessing.shapeContrast
     )
   }
 
@@ -816,6 +859,10 @@ export function AsciiArtGenerator() {
               <PreprocessingOptions
                 settings={settings.preprocessing}
                 updateSettings={(changes) => updateSettings('preprocessing', changes)}
+                characterSet={settings.output.characterSet}
+                onCharacterSetChange={(characterSet) =>
+                  updateSettings('output', { characterSet })
+                }
               />
               <hr />
               {/* Output Options */}
@@ -915,6 +962,11 @@ export function AsciiArtGenerator() {
             >
               {dragActive && (
                 <div className="absolute inset-1 rounded border border-dashed border-accent-secondary" />
+              )}
+              {isProcessing && (
+                <div className="pointer-events-none absolute right-3 top-3 z-40 rounded px-2 py-1 font-mono text-mono-sm text-secondary bg-raise">
+                  loading…
+                </div>
               )}
               <AsciiPreview
                 program={program}

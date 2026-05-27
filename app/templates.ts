@@ -36,6 +36,8 @@ export const DEFAULT_SETTINGS: AsciiSettings = {
     sobelDogThreshold: 0.005,
     sobelKernelSize: 2,
     sobelTileThreshold: 8,
+    placementMode: 'value',
+    shapeContrast: 1.0,
   },
   output: {
     characterSet: predefinedCharacterSets['acerola'],

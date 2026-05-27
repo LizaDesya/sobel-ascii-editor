@@ -7,7 +7,8 @@
  */
 import type { AsciiSettings } from '~/components/ascii-art-generator'
 
-import type { AsciiImageData, EdgeData } from './types'
+import { computeShapePlacements, luminanceRec709 } from './shape-placement'
+import type { AsciiImageData, EdgeData, ShapeData } from './types'
 
 // Types
 export interface CachedMediaData {
@@ -50,11 +51,13 @@ export type MediaProcessingSettings = {
 export type ImageProcessingResult = {
   data: AsciiImageData
   edgeData?: EdgeData
+  shapeData?: ShapeData
   width: number
   height: number
   processedImageUrl?: string
   frames?: AsciiImageData[]
   edgeFrames?: EdgeData[]
+  shapeFrames?: ShapeData[]
   rawFrames?: MediaFrame[]
   frameCount?: number
   sourceFps?: number
@@ -68,14 +71,18 @@ export async function processAnimatedMedia(
 ): Promise<{
   frames: AsciiImageData[]
   edgeFrames: EdgeData[] | null
+  shapeFrames: ShapeData[] | null
   firstFrameData: AsciiImageData
   firstFrameEdgeData: EdgeData | null
+  firstFrameShapeData: ShapeData | null
   firstFrameUrl: string | null
 }> {
   const processedFrames: AsciiImageData[] = []
   const processedEdgeFrames: EdgeData[] = []
+  const processedShapeFrames: ShapeData[] = []
   let firstFrameData: AsciiImageData = {}
   let firstFrameEdgeData: EdgeData | null = null
+  let firstFrameShapeData: ShapeData | null = null
   let firstFrameUrl: string | null = null
 
   for (let i = 0; i < rawFrames.length; i++) {
@@ -88,6 +95,7 @@ export async function processAnimatedMedia(
     if (i === 0) {
       firstFrameData = frameResult.data
       firstFrameEdgeData = frameResult.edgeData || null
+      firstFrameShapeData = frameResult.shapeData || null
       firstFrameUrl = frameResult.processedImageUrl || null
     }
 
@@ -95,17 +103,26 @@ export async function processAnimatedMedia(
     if (frameResult.edgeData) {
       processedEdgeFrames.push(frameResult.edgeData)
     }
+    if (frameResult.shapeData) {
+      processedShapeFrames.push(frameResult.shapeData)
+    }
   }
 
   const useEdges =
+    settings.preprocessing.placementMode === 'value' &&
     settings.preprocessing.algorithm === 'sobel' &&
     processedEdgeFrames.length === processedFrames.length
+  const useShape =
+    settings.preprocessing.placementMode === 'shape' &&
+    processedShapeFrames.length === processedFrames.length
 
   return {
     frames: processedFrames,
     edgeFrames: useEdges ? processedEdgeFrames : null,
+    shapeFrames: useShape ? processedShapeFrames : null,
     firstFrameData,
     firstFrameEdgeData,
+    firstFrameShapeData,
     firstFrameUrl,
   }
 }
@@ -140,6 +157,7 @@ export async function processImage(
       resolve({
         data: result.data,
         edgeData: result.edgeData,
+        shapeData: result.shapeData,
         width,
         height,
         processedImageUrl: result.processedImageUrl,
@@ -177,6 +195,7 @@ async function processImageData(
 ): Promise<{
   data: AsciiImageData
   edgeData?: EdgeData
+  shapeData?: ShapeData
   processedImageUrl?: string
 }> {
   const ctx = sourceCanvas.getContext('2d')!
@@ -220,7 +239,10 @@ async function processImageData(
   const data = convertPixelsToAscii(pixelData, width, height, settings)
 
   let edgeData: EdgeData | undefined
-  if (settings.preprocessing.algorithm === 'sobel') {
+  let shapeData: ShapeData | undefined
+  const placementMode = settings.preprocessing.placementMode
+
+  if (placementMode === 'value' && settings.preprocessing.algorithm === 'sobel') {
     // Acerola dispatches a compute shader at BUFFER_WIDTH/8 × BUFFER_HEIGHT/8
     // with 8×8 workgroups, so every glyph tile is exactly 64 pixels. Resample the
     // preprocessed canvas to (cols*8 × rows*8) so our histogram vote sees the
@@ -241,9 +263,33 @@ async function processImageData(
       height,
       settings.preprocessing,
     )
+  } else if (placementMode === 'shape') {
+    // Shape-vector placement (Alex Harri). Reuse the Sobel-style 8× resample
+    // to guarantee enough pixels per cell for the 4×4 sampling grid inside
+    // each of the 6 circles.
+    const shapeW = width * 8
+    const shapeH = height * 8
+    const shapeCanvas = document.createElement('canvas')
+    shapeCanvas.width = shapeW
+    shapeCanvas.height = shapeH
+    const shapeCtx = shapeCanvas.getContext('2d')!
+    shapeCtx.imageSmoothingEnabled = true
+    shapeCtx.drawImage(sourceCanvas, 0, 0, shapeW, shapeH)
+    const gray = luminanceRec709(
+      shapeCtx.getImageData(0, 0, shapeW, shapeH).data,
+      shapeW * shapeH,
+    )
+    shapeData = await computeShapePlacements(
+      gray,
+      shapeW,
+      shapeH,
+      width,
+      height,
+      settings.preprocessing.shapeContrast,
+    )
   }
 
-  return { data, edgeData, processedImageUrl }
+  return { data, edgeData, shapeData, processedImageUrl }
 }
 
 function applyImagePreprocessing(

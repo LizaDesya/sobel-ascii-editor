@@ -5,11 +5,8 @@
  *
  * Copyright Oxide Computer Company
  */
-import { useEffect, useState } from 'react'
-
 import { InputSwitch } from '~/lib/ui/src'
 import { InputSelect } from '~/lib/ui/src/components/InputSelect/InputSelect'
-import { InputText } from '~/lib/ui/src/components/InputText/InputText'
 
 import type { ColorMappingType, GridType } from './ascii-art-generator'
 import { AspectRatioInputNumber } from './aspect-ratio-input-number'
@@ -17,7 +14,6 @@ import { Container } from './container'
 
 interface OutputOptionsProps {
   settings: {
-    characterSet: string
     grid: GridType
     showUnderlyingImage: boolean
     columns: number
@@ -28,7 +24,6 @@ interface OutputOptionsProps {
   }
   updateSettings: (
     settings: Partial<{
-      characterSet: string
       grid: GridType
       showUnderlyingImage: boolean
       columns: number
@@ -41,6 +36,9 @@ interface OutputOptionsProps {
   sourceImageDimensions?: { width: number; height: number }
 }
 
+// Character-set selection lives in the Value section of `preprocessing-options.tsx`
+// (it's not applicable in Shape mode). This map is still exported because
+// other modules (templates, scripts) reference the preset string by name.
 export const predefinedCharacterSets = {
   acerola: ' .icoP0?@■',
   standard: ' .,-~:;=!*#$@',
@@ -54,81 +52,17 @@ export const predefinedCharacterSets = {
   numbers: '0123456789 ',
 }
 
-const characterSets: CharacterSet[] = [
-  'acerola',
-  'standard',
-  'light',
-  'boxes',
-  'binaryBoxes',
-  'binary',
-  'binaryDirection',
-  'steps',
-  'intersect',
-  'numbers',
-  'custom',
-]
-
-type CharacterSet = keyof typeof predefinedCharacterSets | 'custom'
-
 const gridOptions: GridType[] = ['none', 'horizontal', 'vertical', 'both']
 
 const colorMappingOptions: ColorMappingType[] = ['brightness', 'hue', 'saturation']
-
-const findMatchingCharacterSet = (characterSet: string): CharacterSet => {
-  for (const [key, value] of Object.entries(predefinedCharacterSets)) {
-    if (value === characterSet) {
-      return key as CharacterSet
-    }
-  }
-  return 'custom'
-}
 
 export function OutputOptions({
   settings,
   updateSettings,
   sourceImageDimensions,
 }: OutputOptionsProps) {
-  const [selectedCharSet, setSelectedCharSet] = useState('standard')
-
-  const handleCharacterSetChange = (value: string) => {
-    setSelectedCharSet(value)
-    if (value === 'custom') return
-    updateSettings({
-      characterSet: predefinedCharacterSets[value as keyof typeof predefinedCharacterSets],
-    })
-  }
-
-  const handleCustomCharacterSetChange = (val: string) => {
-    updateSettings({ characterSet: val })
-    setSelectedCharSet('custom')
-  }
-
-  useEffect(() => {
-    const matchingSet = findMatchingCharacterSet(settings.characterSet)
-    setSelectedCharSet(matchingSet)
-  }, [settings.characterSet])
-
   return (
     <Container>
-      <InputSelect<CharacterSet>
-        value={selectedCharSet as CharacterSet}
-        onChange={handleCharacterSetChange}
-        options={characterSets}
-        labelize={(label) => label}
-        placeholder="Select a character set"
-      >
-        Character Set
-      </InputSelect>
-
-      <div className="dedent">
-        <InputText
-          value={settings.characterSet}
-          onChange={handleCustomCharacterSetChange}
-          placeholder="Enter custom characters"
-          className="[fontFamily:--font-mono]"
-        />
-      </div>
-
       <InputSelect<ColorMappingType>
         value={settings.colorMapping}
         onChange={(value) => updateSettings({ colorMapping: value })}

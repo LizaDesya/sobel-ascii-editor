@@ -38,7 +38,7 @@
  */
 import type { Program } from './animation'
 import { ModuleProcessingResult } from './code-processor'
-import type { EdgeData } from './types'
+import type { EdgeData, ShapeData } from './types'
 
 export function generateImageCode(): string {
   return `
@@ -78,6 +78,10 @@ export async function createProgramFromProcessor(
   edgeOverlay?: {
     edgeData: EdgeData | null
     edgeFrames: EdgeData[] | null
+  },
+  shapeOverlay?: {
+    shapeData: ShapeData | null
+    shapeFrames: ShapeData[] | null
   },
 ): Promise<Program | null> {
   if (!processorResult.success || !processorResult.module) {
@@ -149,6 +153,23 @@ export async function createProgramFromProcessor(
         }
         if (edge) {
           return typeof result === 'string' ? { char: edge } : { ...result, char: edge }
+        }
+      }
+
+      // Shape-vector placement (Alex Harri): when shape mode produced a
+      // glyph for this cell, replace the user's char wholesale. Shape and
+      // edge overlays are mutually exclusive — only one will be populated.
+      if (shapeOverlay) {
+        const { shapeData, shapeFrames } = shapeOverlay
+        let shape: string | undefined
+        if (shapeFrames && shapeFrames.length > 0) {
+          const idx = context.frame % shapeFrames.length
+          shape = shapeFrames[idx]?.[pos.x]?.[pos.y]
+        } else if (shapeData) {
+          shape = shapeData[pos.x]?.[pos.y]
+        }
+        if (shape) {
+          return typeof result === 'string' ? { char: shape } : { ...result, char: shape }
         }
       }
 

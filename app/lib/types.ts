@@ -30,6 +30,12 @@ export interface EdgeData {
   }
 }
 
+export interface ShapeData {
+  [x: number]: {
+    [y: number]: string // shape-vector-picked character, replaces the cell wholesale
+  }
+}
+
 export const emptyCell: Cell = {
   char: ' ',
 }
