@@ -886,9 +886,8 @@ export function AsciiArtGenerator() {
                 updateSettings={(changes) => updateSettings('output', changes)}
                 sourceImageDimensions={settings.source.imageDimensions}
               />
-              <hr />
-              {/* Preprocessing */}
-              <div style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)', paddingTop: '12px', paddingBottom: '12px' }}>
+              {/* Preprocessing — full-bleed blue band; negative margins absorb the parent's space-y-6 gap on both sides */}
+              <div className="-mb-6 -mt-6 bg-blue-500/[0.08] py-4">
                 <PreprocessingOptions
                   settings={settings.preprocessing}
                   updateSettings={(changes) => updateSettings('preprocessing', changes)}

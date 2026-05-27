@@ -331,13 +331,19 @@ export async function computeShapePlacements(
   const cellVec = new Float32Array(dim)
   const result: ShapeData = {}
   // When blanks are enabled, cells whose strongest circle is below this
-  // threshold short-circuit straight to space. Without this gate, a single
-  // noisy circle (gradient halo near bright content, JPEG ringing,
-  // antialiased edges) is enough to outvote space in nearest-neighbour —
-  // the effect compounds with dimensionality (9 dims in 3×3 vs 6 in 2×3)
-  // and is amplified further by contrast, producing the dark-region flicker
-  // when brightness/contrast sliders move.
-  const DARK_GATE = 0.05
+  // threshold short-circuit straight to space. Two competing failure modes:
+  //   • Too high: dim-but-textured regions (e.g. Saturn's rings after the
+  //     8× shape-canvas resample bilinear-smooths fine bright/dark stripes
+  //     together) get all 9 circles below the threshold and produce a
+  //     horizontal streak of spaces that propagates across the row even
+  //     though the user can see content in the underlying image.
+  //   • Too low: dark sky cells with single-circle JPEG/ringing noise
+  //     outvote space in nearest-neighbour and flicker between dense
+  //     glyphs as brightness/contrast move (the original bug 58b700d).
+  // 0.005 is below the JPEG-ringing noise floor on a typical 8-bit image
+  // (1.3/255) but well clear of any genuinely-textured cell, so it gates
+  // only cells that are essentially numerically zero across all circles.
+  const DARK_GATE = 0.005
   for (let col = 0; col < cols; col++) {
     const cellOriginX = col * cellPxW
     const column: { [y: number]: string } = {}
