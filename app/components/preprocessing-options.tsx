@@ -46,6 +46,7 @@ const findMatchingCharacterSet = (characterSet: string): CharacterSet => {
 interface PreprocessingOptionsProps {
   settings: {
     brightness: number
+    contrast: number
     whitePoint: number
     blackPoint: number
     blur: number
@@ -97,7 +98,7 @@ export function PreprocessingOptions({
   }
 
   return (
-    <Container>
+    <Container className="rounded bg-blue-500/[0.08]">
       <InputSelect<PlacementMode>
         value={settings.placementMode}
         onChange={(value) => updateSettings({ placementMode: value })}
@@ -106,6 +107,31 @@ export function PreprocessingOptions({
       >
         Placement mode
       </InputSelect>
+
+      {/* Contrast — value mode uses pixel-level contrast, shape mode uses shape-vector contrast */}
+      {settings.placementMode === 'value' && (
+        <InputNumber
+          min={0.5}
+          max={3}
+          step={0.05}
+          value={settings.contrast}
+          onChange={(value) => updateSettings({ contrast: value })}
+        >
+          Contrast
+        </InputNumber>
+      )}
+
+      {settings.placementMode === 'shape' && (
+        <InputNumber
+          min={1}
+          max={5}
+          step={0.1}
+          value={settings.shapeContrast}
+          onChange={(value) => updateSettings({ shapeContrast: value })}
+        >
+          Contrast
+        </InputNumber>
+      )}
 
       <InputNumber
         min={-255}
@@ -140,54 +166,14 @@ export function PreprocessingOptions({
         step={0.1}
         value={settings.blur}
         onChange={(value) => updateSettings({ blur: value })}
+        disabled
       >
         Blur
       </InputNumber>
 
-      <InputSwitch
-        checked={settings.invert}
-        onChange={(checked) => updateSettings({ invert: checked })}
-      >
-        Invert Colors
-      </InputSwitch>
-
+      {/* Value mode: Edge Detection sits above Invert */}
       {settings.placementMode === 'value' && (
         <>
-          <InputSwitch
-            checked={settings.dithering}
-            onChange={(checked) => updateSettings({ dithering: checked })}
-          >
-            Dithering
-          </InputSwitch>
-
-          {settings.dithering && (
-            <div className="dedent">
-              <InputSelect
-                value={settings.ditheringAlgorithm}
-                onChange={(value) =>
-                  updateSettings({ ditheringAlgorithm: value as DitheringAlgorithm })
-                }
-                options={['floydSteinberg', 'atkinson', 'ordered', 'bayer']}
-                labelize={(algorithm) => {
-                  switch (algorithm) {
-                    case 'floydSteinberg':
-                      return 'Floyd-Steinberg'
-                    case 'atkinson':
-                      return 'Atkinson'
-                    case 'ordered':
-                      return 'Ordered'
-                    case 'bayer':
-                      return 'Bayer'
-                    default:
-                      return algorithm
-                  }
-                }}
-              >
-                Dithering Algorithm
-              </InputSelect>
-            </div>
-          )}
-
           <InputSwitch
             checked={settings.algorithm === 'sobel'}
             onChange={(checked) =>
@@ -260,6 +246,52 @@ export function PreprocessingOptions({
               </InputNumber>
             </div>
           )}
+        </>
+      )}
+
+      <InputSwitch
+        checked={settings.invert}
+        onChange={(checked) => updateSettings({ invert: checked })}
+      >
+        Invert Colors
+      </InputSwitch>
+
+      {settings.placementMode === 'value' && (
+        <>
+          <InputSwitch
+            checked={settings.dithering}
+            onChange={(checked) => updateSettings({ dithering: checked })}
+          >
+            Dithering
+          </InputSwitch>
+
+          {settings.dithering && (
+            <div className="dedent">
+              <InputSelect
+                value={settings.ditheringAlgorithm}
+                onChange={(value) =>
+                  updateSettings({ ditheringAlgorithm: value as DitheringAlgorithm })
+                }
+                options={['floydSteinberg', 'atkinson', 'ordered', 'bayer']}
+                labelize={(algorithm) => {
+                  switch (algorithm) {
+                    case 'floydSteinberg':
+                      return 'Floyd-Steinberg'
+                    case 'atkinson':
+                      return 'Atkinson'
+                    case 'ordered':
+                      return 'Ordered'
+                    case 'bayer':
+                      return 'Bayer'
+                    default:
+                      return algorithm
+                  }
+                }}
+              >
+                Dithering Algorithm
+              </InputSelect>
+            </div>
+          )}
 
           <InputSelect<CharacterSet>
             value={selectedCharSet}
@@ -292,16 +324,6 @@ export function PreprocessingOptions({
           >
             Sampling Layout
           </InputSelect>
-
-          <InputNumber
-            min={1}
-            max={5}
-            step={0.1}
-            value={settings.shapeContrast}
-            onChange={(value) => updateSettings({ shapeContrast: value })}
-          >
-            Contrast
-          </InputNumber>
 
           <InputSwitch
             checked={settings.shapeBlankSpace}

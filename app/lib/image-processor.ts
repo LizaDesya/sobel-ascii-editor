@@ -311,6 +311,11 @@ function applyImagePreprocessing(
     adjustBrightness(ctx, preprocessing.brightness)
   }
 
+  // Apply contrast (value mode only; shape mode uses shapeContrast at the vector level)
+  if (preprocessing.placementMode === 'value' && preprocessing.contrast !== 1.0) {
+    adjustContrast(ctx, preprocessing.contrast)
+  }
+
   // Apply inversion
   if (preprocessing.invert) {
     invertColors(ctx)
@@ -438,6 +443,17 @@ function normalizeWithPointAdjustment(
 }
 
 // Image processing utilities
+function adjustContrast(ctx: CanvasRenderingContext2D, contrast: number) {
+  const imageData = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height)
+  const data = imageData.data
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = Math.min(255, Math.max(0, (data[i] - 128) * contrast + 128))
+    data[i + 1] = Math.min(255, Math.max(0, (data[i + 1] - 128) * contrast + 128))
+    data[i + 2] = Math.min(255, Math.max(0, (data[i + 2] - 128) * contrast + 128))
+  }
+  ctx.putImageData(imageData, 0, 0)
+}
+
 export function adjustBrightness(ctx: CanvasRenderingContext2D, brightness: number) {
   const imageData = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height)
   const data = imageData.data

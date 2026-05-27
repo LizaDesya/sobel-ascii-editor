@@ -55,6 +55,7 @@ export interface AsciiSettings {
   }
   preprocessing: {
     brightness: number
+    contrast: number
     whitePoint: number
     blackPoint: number
     blur: number
@@ -513,6 +514,7 @@ export function AsciiArtGenerator() {
       prevPreprocessing.whitePoint !== preprocessing.whitePoint ||
       prevPreprocessing.blackPoint !== preprocessing.blackPoint ||
       prevPreprocessing.brightness !== preprocessing.brightness ||
+      prevPreprocessing.contrast !== preprocessing.contrast ||
       prevPreprocessing.invert !== preprocessing.invert ||
       prevPreprocessing.dithering !== preprocessing.dithering ||
       prevPreprocessing.ditheringAlgorithm !== preprocessing.ditheringAlgorithm ||
@@ -878,7 +880,14 @@ export function AsciiArtGenerator() {
           />
           <div className="flex grow flex-col justify-between overflow-auto">
             <div className="space-y-6 py-4">
-              {/* Preprocessing (always visible) */}
+              {/* Output Options */}
+              <OutputOptions
+                settings={settings.output}
+                updateSettings={(changes) => updateSettings('output', changes)}
+                sourceImageDimensions={settings.source.imageDimensions}
+              />
+              <hr />
+              {/* Preprocessing */}
               <PreprocessingOptions
                 settings={settings.preprocessing}
                 updateSettings={(changes) => updateSettings('preprocessing', changes)}
@@ -887,19 +896,16 @@ export function AsciiArtGenerator() {
                   updateSettings('output', { characterSet })
                 }
               />
-              <hr />
-              {/* Output Options */}
-              <OutputOptions
-                settings={settings.output}
-                updateSettings={(changes) => updateSettings('output', changes)}
-                sourceImageDimensions={settings.source.imageDimensions}
-              />
-              {/* Animation Options (always visible) */}
-              <hr />
-              <AnimationOptions
-                settings={settings.animation}
-                updateSettings={(changes) => updateSettings('animation', changes)}
-              />
+              {(settings.source.data?.includes('data:image/gif') ?? false) && (
+                <>
+                  <hr />
+                  <AnimationOptions
+                    settings={settings.animation}
+                    updateSettings={(changes) => updateSettings('animation', changes)}
+                    isGif
+                  />
+                </>
+              )}
               <hr />
               {/* Export Options */}
               <ExportOptions

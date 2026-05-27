@@ -20,27 +20,32 @@ interface AnimationOptionsProps {
       frameRate: number
     }>,
   ) => void
+  isGif?: boolean
 }
 
-export function AnimationOptions({ settings, updateSettings }: AnimationOptionsProps) {
+export function AnimationOptions({ settings, updateSettings, isGif }: AnimationOptionsProps) {
   return (
     <Container>
-      <InputNumber
-        min={1}
-        value={settings.animationLength}
-        onChange={(val) => updateSettings({ animationLength: val })}
-      >
-        Animation Length
-      </InputNumber>
+      {isGif && (
+        <InputNumber
+          min={1}
+          value={settings.animationLength}
+          onChange={(val) => updateSettings({ animationLength: val })}
+        >
+          Animation Length
+        </InputNumber>
+      )}
 
-      <InputNumber
-        min={1}
-        max={60}
-        value={settings.frameRate}
-        onChange={(val) => updateSettings({ frameRate: val })}
-      >
-        Frame Rate (FPS)
-      </InputNumber>
+      {isGif && (
+        <InputNumber
+          min={1}
+          max={60}
+          value={settings.frameRate}
+          onChange={(val) => updateSettings({ frameRate: val })}
+        >
+          Frame Rate (FPS)
+        </InputNumber>
+      )}
     </Container>
   )
 }

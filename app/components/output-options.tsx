@@ -63,6 +63,23 @@ export function OutputOptions({
 }: OutputOptionsProps) {
   return (
     <Container>
+      <AspectRatioInputNumber
+        width={settings.columns}
+        height={settings.rows}
+        onWidthChange={(value) => updateSettings({ columns: value })}
+        onHeightChange={(value) => updateSettings({ rows: value })}
+        aspectRatio={settings.aspectRatio}
+        aspectRatioFromImg={settings.useImageAspectRatio}
+        onAspectRatioFromImgChange={(value) => {
+          updateSettings({ useImageAspectRatio: value })
+          if (sourceImageDimensions) {
+            const aspectRatio = sourceImageDimensions.width / sourceImageDimensions.height
+            updateSettings({ aspectRatio })
+          }
+        }}
+        onAspectRatioChange={(value) => updateSettings({ aspectRatio: value })}
+      />
+
       <InputSelect<ColorMappingType>
         value={settings.colorMapping}
         onChange={(value) => updateSettings({ colorMapping: value })}
@@ -78,24 +95,6 @@ export function OutputOptions({
       >
         Color Mapping
       </InputSelect>
-
-      <AspectRatioInputNumber
-        width={settings.columns}
-        height={settings.rows}
-        onWidthChange={(value) => updateSettings({ columns: value })}
-        onHeightChange={(value) => updateSettings({ rows: value })}
-        aspectRatio={settings.aspectRatio}
-        aspectRatioFromImg={settings.useImageAspectRatio}
-        onAspectRatioFromImgChange={(value) => {
-          updateSettings({ useImageAspectRatio: value })
-          if (sourceImageDimensions) {
-            // Use stored dimensions if available
-            const aspectRatio = sourceImageDimensions.width / sourceImageDimensions.height
-            updateSettings({ aspectRatio })
-          }
-        }}
-        onAspectRatioChange={(value) => updateSettings({ aspectRatio: value })}
-      />
 
       <InputSelect<GridType>
         value={settings.grid}

@@ -47,7 +47,7 @@ export const AspectRatioInputNumber = ({
   onAspectRatioChange,
   disabled = false,
 }: AspectRatioInputNumberProps) => {
-  const [isLocked, setIsLocked] = useState(aspectRatio !== undefined)
+  const [isLocked, setIsLocked] = useState(aspectRatio !== undefined || aspectRatioFromImg)
 
   const minWidth = 8
   const maxWidth = 1000

@@ -23,6 +23,7 @@ export const DEFAULT_SETTINGS: AsciiSettings = {
   },
   preprocessing: {
     brightness: 0,
+    contrast: 1.0,
     whitePoint: 255,
     blackPoint: 0,
     blur: 0,
@@ -38,16 +39,16 @@ export const DEFAULT_SETTINGS: AsciiSettings = {
     sobelTileThreshold: 8,
     placementMode: 'value',
     shapeContrast: 1.0,
-    shapeBlankSpace: false,
+    shapeBlankSpace: true,
     shapeLayout: '2x3',
   },
   output: {
     characterSet: predefinedCharacterSets['acerola'],
     grid: 'none',
     showUnderlyingImage: false,
-    columns: 400,
+    columns: 100,
     rows: 110,
-    useImageAspectRatio: false,
+    useImageAspectRatio: true,
     colorMapping: 'brightness',
   },
   export: {
