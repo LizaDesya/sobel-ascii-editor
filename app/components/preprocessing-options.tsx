@@ -60,6 +60,7 @@ interface PreprocessingOptionsProps {
     sobelTileThreshold: number
     placementMode: PlacementMode
     shapeContrast: number
+    shapeBlankSpace: boolean
   }
   updateSettings: (
     settings: Partial<PreprocessingOptionsProps['settings']>,
@@ -280,15 +281,24 @@ export function PreprocessingOptions({
       )}
 
       {settings.placementMode === 'shape' && (
-        <InputNumber
-          min={1}
-          max={5}
-          step={0.1}
-          value={settings.shapeContrast}
-          onChange={(value) => updateSettings({ shapeContrast: value })}
-        >
-          Contrast
-        </InputNumber>
+        <>
+          <InputNumber
+            min={1}
+            max={5}
+            step={0.1}
+            value={settings.shapeContrast}
+            onChange={(value) => updateSettings({ shapeContrast: value })}
+          >
+            Contrast
+          </InputNumber>
+
+          <InputSwitch
+            checked={settings.shapeBlankSpace}
+            onChange={(checked) => updateSettings({ shapeBlankSpace: checked })}
+          >
+            Blank Space
+          </InputSwitch>
+        </>
       )}
     </Container>
   )

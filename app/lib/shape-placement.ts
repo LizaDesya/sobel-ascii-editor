@@ -136,6 +136,7 @@ function rasterizeGlyphLuminance(
 async function generateCharacterShapes(
   cellPxW: number,
   cellPxH: number,
+  allowBlank: boolean,
 ): Promise<CharShapeTable> {
   // Render glyphs at 8× the per-cell pixel size for crisp shape sampling, as
   // in the Mayz reference (cell × 8). The absolute size of the rasterization
@@ -164,11 +165,15 @@ async function generateCharacterShapes(
     throw new Error('Could not get 2D context for shape vector rasterization')
   }
 
+  // When blanks are enabled, prepend space so its all-zero vector is the
+  // natural match for cells whose sampling vector is uniformly dark.
+  const charset = allowBlank ? ' ' + PRINTABLE_ASCII : PRINTABLE_ASCII
+
   const chars: string[] = []
-  const raw = new Float32Array(PRINTABLE_ASCII.length * VEC_DIM)
+  const raw = new Float32Array(charset.length * VEC_DIM)
   let written = 0
-  for (let i = 0; i < PRINTABLE_ASCII.length; i++) {
-    const ch = PRINTABLE_ASCII[i]
+  for (let i = 0; i < charset.length; i++) {
+    const ch = charset[i]
     const gray = rasterizeGlyphLuminance(ctx, ch, renderW, renderH, fontPx)
     for (let c = 0; c < VEC_DIM; c++) {
       const circle = INTERNAL_CIRCLES[c]
@@ -205,11 +210,12 @@ async function generateCharacterShapes(
 export function getCharacterShapes(
   cellPxW: number,
   cellPxH: number,
+  allowBlank: boolean,
 ): Promise<CharShapeTable> {
-  const key = `${cellPxW}x${cellPxH}`
+  const key = `${cellPxW}x${cellPxH}:${allowBlank ? 1 : 0}`
   const cached = shapeCache.get(key)
   if (cached) return cached
-  const pending = generateCharacterShapes(cellPxW, cellPxH)
+  const pending = generateCharacterShapes(cellPxW, cellPxH, allowBlank)
   shapeCache.set(key, pending)
   return pending
 }
@@ -250,6 +256,7 @@ export async function computeShapePlacements(
   cols: number,
   rows: number,
   contrastExp: number,
+  allowBlank: boolean,
 ): Promise<ShapeData> {
   if (cols <= 0 || rows <= 0) return {}
   const cellPxW = srcWidth / cols
@@ -257,6 +264,7 @@ export async function computeShapePlacements(
   const table = await getCharacterShapes(
     Math.max(1, Math.round(cellPxW)),
     Math.max(1, Math.round(cellPxH)),
+    allowBlank,
   )
 
   const cellVec = new Float32Array(VEC_DIM)

@@ -69,6 +69,7 @@ export interface AsciiSettings {
     sobelTileThreshold: number
     placementMode: PlacementMode
     shapeContrast: number
+    shapeBlankSpace: boolean
   }
   output: {
     characterSet: string
@@ -521,7 +522,8 @@ export function AsciiArtGenerator() {
       prevPreprocessing.sobelKernelSize !== preprocessing.sobelKernelSize ||
       prevPreprocessing.sobelTileThreshold !== preprocessing.sobelTileThreshold ||
       prevPreprocessing.placementMode !== preprocessing.placementMode ||
-      prevPreprocessing.shapeContrast !== preprocessing.shapeContrast
+      prevPreprocessing.shapeContrast !== preprocessing.shapeContrast ||
+      prevPreprocessing.shapeBlankSpace !== preprocessing.shapeBlankSpace
     )
   }
 
