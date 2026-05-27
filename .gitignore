@@ -23,8 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 
-claude.md
-
 package-lock.json
 
 # Local reference copy of Garrett Gunnell's AcerolaFX (used while porting the

@@ -42,6 +42,7 @@ interface OutputOptionsProps {
 }
 
 export const predefinedCharacterSets = {
+  acerola: ' .icoP0?@■',
   standard: ' .,-~:;=!*#$@',
   light: '=-:. ',
   boxes: '█▉▊▋▌▍▎▏',
@@ -54,6 +55,7 @@ export const predefinedCharacterSets = {
 }
 
 const characterSets: CharacterSet[] = [
+  'acerola',
   'standard',
   'light',
   'boxes',

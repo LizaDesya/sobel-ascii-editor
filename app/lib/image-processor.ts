@@ -673,12 +673,36 @@ function computeSobelEdges(
     mask[i] = blurA[i] - tau * blurB[i] >= dogThreshold ? 1 : 0
   }
 
-  // Pass 3: separable Scharr on the binary mask.
-  //   Horizontal pass: Gx_row = 3*l - 3*r ; Gy_row = 3*l + 10*c + 3*r
-  //   Vertical pass:   Gx     = 3*Gx_top + 10*Gx_cur + 3*Gx_bot
-  //                    Gy     = 3*Gy_top - 3*Gy_bot
-  // We fuse both passes per pixel without materializing the intermediate
-  // texture — small but worth it for image-sized arrays.
+  // Pass 3a: separable Scharr on the binary mask — store Gx, Gy fields so we
+  // can run non-maximum suppression in 3b.
+  //   Gx = [-3 0 3; -10 0 10; -3 0 3]
+  //   Gy = [-3 -10 -3; 0 0 0; 3 10 3]
+  const gxField = new Float32Array(mask.length)
+  const gyField = new Float32Array(mask.length)
+  for (let y = 1; y < srcHeight - 1; y++) {
+    const rowAbove = (y - 1) * srcWidth
+    const rowCur = y * srcWidth
+    const rowBelow = (y + 1) * srcWidth
+    for (let x = 1; x < srcWidth - 1; x++) {
+      const tl = mask[rowAbove + x - 1]
+      const tc = mask[rowAbove + x]
+      const tr = mask[rowAbove + x + 1]
+      const ml = mask[rowCur + x - 1]
+      const mr = mask[rowCur + x + 1]
+      const bl = mask[rowBelow + x - 1]
+      const bc = mask[rowBelow + x]
+      const br = mask[rowBelow + x + 1]
+      gxField[rowCur + x] = -3 * tl + 3 * tr - 10 * ml + 10 * mr - 3 * bl + 3 * br
+      gyField[rowCur + x] = -3 * tl - 10 * tc - 3 * tr + 3 * bl + 10 * bc + 3 * br
+    }
+  }
+
+  // Pass 3b: non-maximum suppression. For each edge pixel, look at its two
+  // neighbors along the gradient direction (rounded to the nearest 45°) and
+  // keep this pixel only if its magnitude is ≥ both. Thins the 2-3 px wide
+  // edge band the binary DoG leaves behind, eliminating the "double slash"
+  // artifact where both sides of a thick edge get marked. Standard Canny step.
+  // We compute mag² (no sqrt) since we only need ordinal comparisons.
 
   // Tile geometry: glyph cells are exactly 8×8 src pixels because
   // processImageData resampled the source to (cols*8 × rows*8). Each cell
@@ -686,37 +710,51 @@ function computeSobelEdges(
   const cellPx = 8
   const cellCounts = new Int32Array(cols * rows * 4)
 
-  // Pre-fetch row offsets to avoid repeated multiplies in the hot loop.
   for (let y = 1; y < srcHeight - 1; y++) {
-    const rowAbove = (y - 1) * srcWidth
     const rowCur = y * srcWidth
-    const rowBelow = (y + 1) * srcWidth
     const cellY = Math.min(rows - 1, (y / cellPx) | 0)
-
     for (let x = 1; x < srcWidth - 1; x++) {
-      // Sample 3×3 from the binary mask.
-      const tl = mask[rowAbove + x - 1]
-      const tc = mask[rowAbove + x]
-      const tr = mask[rowAbove + x + 1]
-      const ml = mask[rowCur + x - 1]
-      // mc (rowCur + x) is unused — the Scharr 3×3 has a 0 weight in the
-      // center column for Gx and the center row for Gy, so the center pixel
-      // never contributes when we fuse the separable form into one expression.
-      const mr = mask[rowCur + x + 1]
-      const bl = mask[rowBelow + x - 1]
-      const bc = mask[rowBelow + x]
-      const br = mask[rowBelow + x + 1]
-
-      // Separable Scharr — equivalent to the 3×3 kernels
-      //   Gx = [-3 0 3; -10 0 10; -3 0 3]
-      //   Gy = [-3 -10 -3; 0 0 0; 3 10 3]
-      const gx = -3 * tl + 3 * tr - 10 * ml + 10 * mr - 3 * bl + 3 * br
-      const gy = -3 * tl - 10 * tc - 3 * tr + 3 * bl + 10 * bc + 3 * br
+      const i = rowCur + x
+      const gx = gxField[i]
+      const gy = gyField[i]
 
       // HLSL's `1 - isnan(atan2(0,0))` flag — in JS Math.atan2(0,0) returns 0,
       // so we have to test the inputs directly instead.
       if (gx === 0 && gy === 0) continue
 
+      // NMS — pick the two neighbors along the gradient direction. Round the
+      // angle to the nearest 45° so the offset is one of 8 cardinal/diagonal
+      // unit vectors.
+      const absGx = gx < 0 ? -gx : gx
+      const absGy = gy < 0 ? -gy : gy
+      const sx = gx < 0 ? -1 : 1
+      const sy = gy < 0 ? -1 : 1
+      let dx: number
+      let dy: number
+      // tan(22.5°) ≈ 0.4142. We approximate with 0.4 to bias the cardinal
+      // (E/W/N/S) wedges very slightly wider, which matches the DoG mask's
+      // tendency to produce axis-aligned edges most cleanly.
+      if (absGy < 0.4 * absGx) {
+        dx = sx
+        dy = 0
+      } else if (absGx < 0.4 * absGy) {
+        dx = 0
+        dy = sy
+      } else {
+        dx = sx
+        dy = sy
+      }
+      const mag2 = gx * gx + gy * gy
+      const fwd = i + dy * srcWidth + dx
+      const bwd = i - dy * srcWidth - dx
+      const gxF = gxField[fwd]
+      const gyF = gyField[fwd]
+      const gxB = gxField[bwd]
+      const gyB = gyField[bwd]
+      if (mag2 < gxF * gxF + gyF * gyF) continue
+      if (mag2 < gxB * gxB + gyB * gyB) continue
+
+      // Quantize angle into a glyph direction. Acerola's tight-band scheme.
       const theta = Math.atan2(gy, gx)
       const absTheta = Math.abs(theta) / Math.PI
 
