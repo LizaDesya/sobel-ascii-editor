@@ -552,13 +552,11 @@ function applyOrdered(data: Uint8ClampedArray, width: number, height: number) {
 // on the 0/1 mask → atan2(Gy, Gx) → bucket angle into 4 directions → per-tile
 // majority vote over an 8×8 cell.
 
-// Direction index → glyph. The edgesASCII.png atlas stores glyphs in column
-// order `| - / \` (cols 8/16/24/32), but the shader samples it with
-// `localUV.y = 8 - (tid.y % 8)` — a vertical flip that mirrors each glyph on
-// screen. Vertical-mirroring `/` gives `\` and vice versa, so on-screen the
-// effective mapping is dir 2 = `\`, dir 3 = `/`. We render through a real
-// font (no texture flip), so we have to apply that swap here.
-const EDGE_CHARS = ['|', '_', '\\', '/'] as const
+// Direction index → glyph. Derived from first principles in screen Y-down
+// coordinates: a positive atan2(Gy, Gx) near +π/4 means the gradient points
+// down-right, so the perpendicular edge runs bottom-left → top-right, which
+// is `/`. See the bin assignment in computeSobelEdges for the full mapping.
+const EDGE_CHARS = ['|', '_', '/', '\\'] as const
 
 // Grayscale in [0, 1] using Rec. 601 luma weights, matching Acerola's
 // Common::Luminance on saturated RGB.
@@ -728,12 +726,12 @@ function computeSobelEdges(
       } else if (absTheta > 0.45 && absTheta < 0.55) {
         dir = 1 // horizontal edge `_`
       } else if (absTheta > 0.05 && absTheta < 0.45) {
-        // θ near +π/4 → gradient down-right → edge `\` (dir 2)
-        // θ near −π/4 → gradient up-right   → edge `/` (dir 3)
+        // θ near +π/4 → gradient down-right → edge `/` (dir 2)
+        // θ near −π/4 → gradient up-right   → edge `\` (dir 3)
         dir = theta > 0 ? 2 : 3
       } else if (absTheta > 0.55 && absTheta < 0.9) {
-        // θ near +3π/4 → gradient down-left → edge `/` (dir 3)
-        // θ near −3π/4 → gradient up-left   → edge `\` (dir 2)
+        // θ near +3π/4 → gradient down-left → edge `\` (dir 3)
+        // θ near −3π/4 → gradient up-left   → edge `/` (dir 2)
         dir = theta > 0 ? 3 : 2
       }
       if (dir < 0) continue
