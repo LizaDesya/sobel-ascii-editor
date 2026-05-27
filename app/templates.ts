@@ -39,6 +39,7 @@ export const DEFAULT_SETTINGS: AsciiSettings = {
     placementMode: 'value',
     shapeContrast: 1.0,
     shapeBlankSpace: false,
+    shapeLayout: '2x3',
   },
   output: {
     characterSet: predefinedCharacterSets['acerola'],

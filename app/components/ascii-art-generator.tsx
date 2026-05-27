@@ -29,6 +29,7 @@ import {
   processAnimatedMedia,
   processImage,
 } from '~/lib/image-processor'
+import type { ShapeLayout } from '~/lib/shape-placement'
 import type { AsciiImageData, EdgeData, ShapeData } from '~/lib/types'
 import { cn } from '~/lib/utils'
 import { DEFAULT_SETTINGS, TEMPLATES, TemplateType } from '~/templates'
@@ -70,6 +71,7 @@ export interface AsciiSettings {
     placementMode: PlacementMode
     shapeContrast: number
     shapeBlankSpace: boolean
+    shapeLayout: ShapeLayout
   }
   output: {
     characterSet: string
@@ -523,7 +525,8 @@ export function AsciiArtGenerator() {
       prevPreprocessing.sobelTileThreshold !== preprocessing.sobelTileThreshold ||
       prevPreprocessing.placementMode !== preprocessing.placementMode ||
       prevPreprocessing.shapeContrast !== preprocessing.shapeContrast ||
-      prevPreprocessing.shapeBlankSpace !== preprocessing.shapeBlankSpace
+      prevPreprocessing.shapeBlankSpace !== preprocessing.shapeBlankSpace ||
+      prevPreprocessing.shapeLayout !== preprocessing.shapeLayout
     )
   }
 

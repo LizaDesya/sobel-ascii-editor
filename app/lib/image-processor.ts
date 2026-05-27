@@ -287,6 +287,7 @@ async function processImageData(
       height,
       settings.preprocessing.shapeContrast,
       settings.preprocessing.shapeBlankSpace,
+      settings.preprocessing.shapeLayout,
     )
   }
 

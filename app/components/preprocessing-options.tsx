@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react'
 
 import { Algorithm, DitheringAlgorithm } from '~/lib/image-processor'
+import type { ShapeLayout } from '~/lib/shape-placement'
 import { InputSwitch } from '~/lib/ui/src'
 import { InputNumber } from '~/lib/ui/src/components/InputNumber/InputNumber'
 import { InputSelect } from '~/lib/ui/src/components/InputSelect/InputSelect'
@@ -61,6 +62,7 @@ interface PreprocessingOptionsProps {
     placementMode: PlacementMode
     shapeContrast: number
     shapeBlankSpace: boolean
+    shapeLayout: ShapeLayout
   }
   updateSettings: (
     settings: Partial<PreprocessingOptionsProps['settings']>,
@@ -282,6 +284,15 @@ export function PreprocessingOptions({
 
       {settings.placementMode === 'shape' && (
         <>
+          <InputSelect<ShapeLayout>
+            value={settings.shapeLayout}
+            onChange={(value) => updateSettings({ shapeLayout: value })}
+            options={['2x3', '3x3']}
+            labelize={(layout) => (layout === '2x3' ? '2×3 (6 circles)' : '3×3 (9 circles)')}
+          >
+            Sampling Layout
+          </InputSelect>
+
           <InputNumber
             min={1}
             max={5}

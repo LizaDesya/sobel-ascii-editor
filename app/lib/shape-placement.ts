@@ -10,16 +10,19 @@
 // (https://alexharri.com/blog/ascii-rendering) and the reference Python
 // implementation at ascii-renderer-main/ascii_renderer/shape.py.
 //
-// Each cell is described by a 6-D "shape vector" sampled from six circles
-// arranged in a staggered 2×3 grid. The same circles are sampled inside each
-// candidate glyph (rasterized via Canvas2D in DepartureMono) to produce the
-// character's reference vector. The cell's character is the glyph whose
-// vector is nearest in Euclidean distance.
+// Two sampling layouts are supported:
+//   • '2x3' (Alex's original) — six circles in a staggered 2×3 grid. Lower
+//     dimensionality is cheaper, but the two-column arrangement misses the
+//     centred stems of glyphs like T/I/l/|.
+//   • '3x3' — nine circles in an evenly spaced 3×3 grid. Adds a middle
+//     column so centred glyphs match better, at the cost of a 9-D vector.
 //
 // Directional contrast enhancement (per the article) is intentionally
 // omitted. A single optional global-contrast exponent is supported.
 
 import type { ShapeData } from './types'
+
+export type ShapeLayout = '2x3' | '3x3'
 
 interface SamplingCircle {
   cx: number
@@ -30,7 +33,7 @@ interface SamplingCircle {
 // Verbatim from ascii_renderer/shape.py: 6 circles in a staggered 2×3 grid.
 // Left column slightly lowered, right slightly raised — staggering closes the
 // gaps between rows so punctuation in the cell middle still gets captured.
-const INTERNAL_CIRCLES: readonly SamplingCircle[] = [
+const CIRCLES_2x3: readonly SamplingCircle[] = [
   { cx: 0.3, cy: 0.2, r: 0.22 },
   { cx: 0.7, cy: 0.15, r: 0.22 },
   { cx: 0.3, cy: 0.5, r: 0.22 },
@@ -39,7 +42,25 @@ const INTERNAL_CIRCLES: readonly SamplingCircle[] = [
   { cx: 0.7, cy: 0.85, r: 0.22 },
 ]
 
-const VEC_DIM = INTERNAL_CIRCLES.length
+// Evenly spaced 3×3 grid. No stagger — the three columns already overlap
+// horizontally enough to close mid-cell gaps. Radius shrunk to 0.18 so the
+// columns don't double-count the cell centre.
+const CIRCLES_3x3: readonly SamplingCircle[] = [
+  { cx: 0.17, cy: 0.2, r: 0.18 },
+  { cx: 0.5, cy: 0.2, r: 0.18 },
+  { cx: 0.83, cy: 0.2, r: 0.18 },
+  { cx: 0.17, cy: 0.5, r: 0.18 },
+  { cx: 0.5, cy: 0.5, r: 0.18 },
+  { cx: 0.83, cy: 0.5, r: 0.18 },
+  { cx: 0.17, cy: 0.8, r: 0.18 },
+  { cx: 0.5, cy: 0.8, r: 0.18 },
+  { cx: 0.83, cy: 0.8, r: 0.18 },
+]
+
+const LAYOUTS: Record<ShapeLayout, readonly SamplingCircle[]> = {
+  '2x3': CIRCLES_2x3,
+  '3x3': CIRCLES_3x3,
+}
 
 // Full printable ASCII (0x21..0x7E). Space is excluded — its zero vector
 // dominates flat regions for the wrong reasons (we want chars whose shape
@@ -68,7 +89,8 @@ const UNIT_OFFSETS: ReadonlyArray<readonly [number, number]> = (() => {
 
 interface CharShapeTable {
   chars: string[]
-  // Flat row-major Float32Array of length chars.length * VEC_DIM
+  dim: number
+  // Flat row-major Float32Array of length chars.length * dim
   vectors: Float32Array
 }
 
@@ -137,7 +159,11 @@ async function generateCharacterShapes(
   cellPxW: number,
   cellPxH: number,
   allowBlank: boolean,
+  layout: ShapeLayout,
 ): Promise<CharShapeTable> {
+  const circles = LAYOUTS[layout]
+  const dim = circles.length
+
   // Render glyphs at 8× the per-cell pixel size for crisp shape sampling, as
   // in the Mayz reference (cell × 8). The absolute size of the rasterization
   // only affects sampling accuracy — circles are normalized.
@@ -170,14 +196,14 @@ async function generateCharacterShapes(
   const charset = allowBlank ? ' ' + PRINTABLE_ASCII : PRINTABLE_ASCII
 
   const chars: string[] = []
-  const raw = new Float32Array(charset.length * VEC_DIM)
+  const raw = new Float32Array(charset.length * dim)
   let written = 0
   for (let i = 0; i < charset.length; i++) {
     const ch = charset[i]
     const gray = rasterizeGlyphLuminance(ctx, ch, renderW, renderH, fontPx)
-    for (let c = 0; c < VEC_DIM; c++) {
-      const circle = INTERNAL_CIRCLES[c]
-      raw[written * VEC_DIM + c] = sampleCircleAvg(
+    for (let c = 0; c < dim; c++) {
+      const circle = circles[c]
+      raw[written * dim + c] = sampleCircleAvg(
         gray,
         renderW,
         renderH,
@@ -190,32 +216,41 @@ async function generateCharacterShapes(
     written++
   }
 
-  // Per-dimension max-normalize, 1e-6 floor to avoid divide-by-zero on
-  // dimensions where no glyph ever has ink.
-  const maxes = new Float32Array(VEC_DIM)
-  for (let d = 0; d < VEC_DIM; d++) maxes[d] = 1e-6
+  // Per-dimension max-normalize, with a floor on the divisor. The floor
+  // matters: if some dim happens to have a small charset max (no glyph fills
+  // that exact spot — particularly common for the centre-column circles in
+  // the 3×3 layout), straight per-dim normalization amplifies that dim by
+  // 5–10×. Then any noise in the per-cell sampling vector (which isn't
+  // similarly normalized) at that dim dominates the nearest-neighbour
+  // distance and pulls dark cells toward dense glyphs — the effect grows
+  // worse with the contrast slider, which scales noise further. A 0.3 floor
+  // caps the per-dim amplification at ~3.3× and removes the bias.
+  const MAX_FLOOR = 0.3
+  const maxes = new Float32Array(dim)
+  for (let d = 0; d < dim; d++) maxes[d] = MAX_FLOOR
   for (let i = 0; i < written; i++) {
-    for (let d = 0; d < VEC_DIM; d++) {
-      const v = raw[i * VEC_DIM + d]
+    for (let d = 0; d < dim; d++) {
+      const v = raw[i * dim + d]
       if (v > maxes[d]) maxes[d] = v
     }
   }
   for (let i = 0; i < written; i++) {
-    for (let d = 0; d < VEC_DIM; d++) raw[i * VEC_DIM + d] /= maxes[d]
+    for (let d = 0; d < dim; d++) raw[i * dim + d] /= maxes[d]
   }
 
-  return { chars, vectors: raw }
+  return { chars, dim, vectors: raw }
 }
 
 export function getCharacterShapes(
   cellPxW: number,
   cellPxH: number,
   allowBlank: boolean,
+  layout: ShapeLayout,
 ): Promise<CharShapeTable> {
-  const key = `${cellPxW}x${cellPxH}:${allowBlank ? 1 : 0}`
+  const key = `${cellPxW}x${cellPxH}:${allowBlank ? 1 : 0}:${layout}`
   const cached = shapeCache.get(key)
   if (cached) return cached
-  const pending = generateCharacterShapes(cellPxW, cellPxH, allowBlank)
+  const pending = generateCharacterShapes(cellPxW, cellPxH, allowBlank, layout)
   shapeCache.set(key, pending)
   return pending
 }
@@ -231,13 +266,13 @@ function applyGlobalContrast(vec: Float32Array, exponent: number): void {
 }
 
 function findNearestChar(table: CharShapeTable, vec: Float32Array): string {
-  const { chars, vectors } = table
+  const { chars, vectors, dim } = table
   let bestIdx = 0
   let bestDist = Infinity
   for (let i = 0; i < chars.length; i++) {
     let d = 0
-    const base = i * VEC_DIM
-    for (let c = 0; c < VEC_DIM; c++) {
+    const base = i * dim
+    for (let c = 0; c < dim; c++) {
       const diff = vectors[base + c] - vec[c]
       d += diff * diff
     }
@@ -257,6 +292,7 @@ export async function computeShapePlacements(
   rows: number,
   contrastExp: number,
   allowBlank: boolean,
+  layout: ShapeLayout,
 ): Promise<ShapeData> {
   if (cols <= 0 || rows <= 0) return {}
   const cellPxW = srcWidth / cols
@@ -265,17 +301,20 @@ export async function computeShapePlacements(
     Math.max(1, Math.round(cellPxW)),
     Math.max(1, Math.round(cellPxH)),
     allowBlank,
+    layout,
   )
 
-  const cellVec = new Float32Array(VEC_DIM)
+  const circles = LAYOUTS[layout]
+  const dim = circles.length
+  const cellVec = new Float32Array(dim)
   const result: ShapeData = {}
   for (let col = 0; col < cols; col++) {
     const cellOriginX = col * cellPxW
     const column: { [y: number]: string } = {}
     for (let row = 0; row < rows; row++) {
       const cellOriginY = row * cellPxH
-      for (let c = 0; c < VEC_DIM; c++) {
-        const circle = INTERNAL_CIRCLES[c]
+      for (let c = 0; c < dim; c++) {
+        const circle = circles[c]
         cellVec[c] = sampleCircleAvg(
           gray,
           srcWidth,
