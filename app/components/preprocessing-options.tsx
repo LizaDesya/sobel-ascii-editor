@@ -8,10 +8,11 @@
 import { useEffect, useState } from 'react'
 
 import { Algorithm, DitheringAlgorithm } from '~/lib/image-processor'
-import { InputSwitch } from '~/lib/ui/src'
+import { InputButton, InputSwitch } from '~/lib/ui/src'
 import { InputNumber } from '~/lib/ui/src/components/InputNumber/InputNumber'
 import { InputSelect } from '~/lib/ui/src/components/InputSelect/InputSelect'
 import { InputText } from '~/lib/ui/src/components/InputText/InputText'
+import { PencilIcon } from '~/assets/icons/PencilIcon'
 
 import type { PlacementMode } from './ascii-art-generator'
 import { Container } from './container'
@@ -43,6 +44,11 @@ const findMatchingCharacterSet = (characterSet: string): CharacterSet => {
 }
 
 interface PreprocessingOptionsProps {
+  drawMode: boolean
+  brushChar: string
+  onDrawModeChange: (active: boolean) => void
+  onBrushCharChange: (char: string) => void
+  onResetDrawing: () => void
   settings: {
     brightness: number
     contrast: number
@@ -72,6 +78,11 @@ export function PreprocessingOptions({
   updateSettings,
   characterSet,
   onCharacterSetChange,
+  drawMode,
+  brushChar,
+  onDrawModeChange,
+  onBrushCharChange,
+  onResetDrawing,
 }: PreprocessingOptionsProps) {
   const [selectedCharSet, setSelectedCharSet] = useState<CharacterSet>('standard')
 
@@ -102,6 +113,37 @@ export function PreprocessingOptions({
       >
         Placement mode
       </InputSelect>
+
+      {/* Draw tool */}
+      <div className="space-y-2">
+        <div className="text-xs font-medium uppercase tracking-wider text-secondary">Draw</div>
+        <div className="flex items-center gap-2">
+          <InputButton
+            variant={drawMode ? 'default' : 'secondary'}
+            icon
+            onClick={() => onDrawModeChange(!drawMode)}
+            className="!w-8 shrink-0"
+          >
+            <PencilIcon className="h-3.5 w-3.5" />
+          </InputButton>
+          <input
+            type="text"
+            maxLength={1}
+            value={brushChar}
+            onChange={(e) => {
+              const val = e.target.value
+              if (val.length > 0) onBrushCharChange(val[val.length - 1])
+            }}
+            className="h-8 w-full rounded border bg-transparent px-2 font-mono text-sm text-default border-default focus:outline-none focus:ring-1 focus:ring-[--mt-highlight]"
+          />
+        </div>
+        <InputButton variant="secondary" onClick={onResetDrawing}>
+          Reset drawing
+        </InputButton>
+        <p className="text-xs text-tertiary">
+          Changing canvas resolution will remove all drawn changes.
+        </p>
+      </div>
 
       {/* Contrast — value mode uses pixel-level contrast, shape mode uses shape-vector contrast */}
       {settings.placementMode === 'value' && (

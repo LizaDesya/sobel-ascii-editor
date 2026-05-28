@@ -36,6 +36,12 @@ export interface ShapeData {
   }
 }
 
+export interface PaintData {
+  [x: number]: {
+    [y: number]: string // user-painted character, wins over all algorithm output
+  }
+}
+
 export const emptyCell: Cell = {
   char: ' ',
 }

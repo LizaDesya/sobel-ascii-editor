@@ -31,7 +31,7 @@ import {
   processImage,
 } from '~/lib/image-processor'
 import type { ShapeLayout } from '~/lib/shape-placement'
-import type { AsciiImageData, EdgeData, ShapeData } from '~/lib/types'
+import type { AsciiImageData, EdgeData, PaintData, ShapeData } from '~/lib/types'
 import { cn } from '~/lib/utils'
 import { CHAR_HEIGHT, CHAR_WIDTH } from '~/components/dimension-utils'
 import { DEFAULT_SETTINGS, TEMPLATES, TemplateType } from '~/templates'
@@ -122,6 +122,11 @@ export function AsciiArtGenerator() {
   const [currentShapeData, setCurrentShapeData] = useState<ShapeData | null>(null)
   const [currentShapeFrames, setCurrentShapeFrames] = useState<ShapeData[] | null>(null)
 
+  // Draw tool state
+  const paintDataRef = useRef<PaintData>({})
+  const [drawMode, setDrawMode] = useState(false)
+  const [brushChar, setBrushChar] = useState('✚')
+
   // Processing state
   const [isExporting, setIsExporting] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
@@ -130,6 +135,7 @@ export function AsciiArtGenerator() {
 
   const prevSettings = useRef<AsciiSettings | null>(null)
   const isInitialMount = useRef(true)
+  const prevColsRows = useRef({ cols: settings.output.columns, rows: settings.output.rows })
 
   const handleBeforeUnload = (event: BeforeUnloadEvent) => {
     // Trigger the warning dialog when the user closes or navigates the tab
@@ -198,6 +204,16 @@ export function AsciiArtGenerator() {
     if (isInitialMount.current) {
       isInitialMount.current = false
       return
+    }
+
+    // Clear painted cells when the grid resolution changes
+    const newCols = settings.output.columns
+    const newRows = settings.output.rows
+    if (prevColsRows.current.cols !== newCols || prevColsRows.current.rows !== newRows) {
+      for (const k of Object.keys(paintDataRef.current)) {
+        delete (paintDataRef.current as Record<string, unknown>)[k]
+      }
+      prevColsRows.current = { cols: newCols, rows: newRows }
     }
 
     // Check if settings have meaningfully changed
@@ -536,6 +552,7 @@ export function AsciiArtGenerator() {
           ? { edgeData, edgeFrames }
           : undefined,
         placementMode === 'shape' ? { shapeData, shapeFrames } : undefined,
+        { paintData: paintDataRef.current },
       )
 
       setProgram(newProgram)
@@ -676,6 +693,26 @@ export function AsciiArtGenerator() {
 
     return rawFrames
   }
+
+  const handleCellPaint = useCallback(
+    (col: number, row: number) => {
+      if (!paintDataRef.current[col]) paintDataRef.current[col] = {}
+      paintDataRef.current[col][row] = brushChar
+      if (animationController) {
+        animationController.setFrame(animationController.getState().frame)
+      }
+    },
+    [brushChar, animationController],
+  )
+
+  const handleResetDrawing = useCallback(() => {
+    for (const k of Object.keys(paintDataRef.current)) {
+      delete (paintDataRef.current as Record<string, unknown>)[k]
+    }
+    if (animationController) {
+      animationController.setFrame(animationController.getState().frame)
+    }
+  }, [animationController])
 
   const handleProcessingError = (operation: string, error: unknown) => {
     console.error(`Error ${operation}:`, error)
@@ -938,6 +975,11 @@ export function AsciiArtGenerator() {
                   onCharacterSetChange={(characterSet) =>
                     updateSettings('output', { characterSet })
                   }
+                  drawMode={drawMode}
+                  brushChar={brushChar}
+                  onDrawModeChange={setDrawMode}
+                  onBrushCharChange={setBrushChar}
+                  onResetDrawing={handleResetDrawing}
                 />
               </div>
               {(settings.source.data?.includes('data:image/gif') ?? false) && (
@@ -1032,6 +1074,10 @@ export function AsciiArtGenerator() {
               )}
               <AsciiPreview
                 program={program}
+                drawMode={drawMode}
+                brushChar={brushChar}
+                onCellPaint={handleCellPaint}
+                onDrawModeChange={setDrawMode}
                 dimensions={{
                   width: settings.output.columns,
                   height: settings.output.rows,

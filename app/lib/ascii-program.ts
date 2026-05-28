@@ -38,7 +38,7 @@
  */
 import type { Program } from './animation'
 import { ModuleProcessingResult } from './code-processor'
-import type { EdgeData, ShapeData } from './types'
+import type { EdgeData, PaintData, ShapeData } from './types'
 
 export function generateImageCode(): string {
   return `
@@ -82,6 +82,9 @@ export async function createProgramFromProcessor(
   shapeOverlay?: {
     shapeData: ShapeData | null
     shapeFrames: ShapeData[] | null
+  },
+  paintOverlay?: {
+    paintData: PaintData
   },
 ): Promise<Program | null> {
   if (!processorResult.success || !processorResult.module) {
@@ -170,6 +173,14 @@ export async function createProgramFromProcessor(
         }
         if (shape) {
           return typeof result === 'string' ? { char: shape } : { ...result, char: shape }
+        }
+      }
+
+      // User paint layer: always wins over algorithm output.
+      if (paintOverlay) {
+        const painted = paintOverlay.paintData[pos.x]?.[pos.y]
+        if (painted !== undefined) {
+          return typeof result === 'string' ? { char: painted } : { ...result, char: painted }
         }
       }
 

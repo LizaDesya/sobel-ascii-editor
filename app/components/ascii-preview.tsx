@@ -31,6 +31,10 @@ import { GridOverlay } from './grid-overlay'
 
 interface AsciiPreviewProps {
   program: Program | null
+  drawMode?: boolean
+  brushChar?: string
+  onCellPaint?: (col: number, row: number) => void
+  onDrawModeChange?: (active: boolean) => void
   dimensions: { width: number; height: number }
   gridType: GridType
   showUnderlyingImage: boolean
@@ -128,8 +132,13 @@ const useSize = (target: HTMLDivElement | null) => {
   return size
 }
 
+const DRAW_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='%2348d597'%3E%3Cpath d='M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.609zm1.414 1.06a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354l-1.086-1.086zM11.189 6.25 9.75 4.811 3.558 11H3.75v.192l.364.364H4.5v-.056h.056L11.19 6.25z'/%3E%3C/svg%3E") 1 14, crosshair`
+
 export function AsciiPreview({
   program,
+  drawMode = false,
+  onCellPaint,
+  onDrawModeChange,
   dimensions,
   gridType,
   showUnderlyingImage,
@@ -154,6 +163,7 @@ export function AsciiPreview({
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
   const [autoFit, setAutoFit] = useState(false)
   const prevDimensionsRef = useRef(dimensions)
+  const transformedDivRef = useRef<HTMLDivElement | null>(null)
 
   const containerSize = useSize(container)
 
@@ -169,13 +179,35 @@ export function AsciiPreview({
     }
   }
 
+  const paintCell = useCallback(
+    (clientX: number, clientY: number) => {
+      const el = transformedDivRef.current
+      if (!el || !onCellPaint) return
+      const rect = el.getBoundingClientRect()
+      const col = Math.floor(((clientX - rect.left) / rect.width) * dimensions.width)
+      const row = Math.floor(((clientY - rect.top) / rect.height) * dimensions.height)
+      if (col >= 0 && col < dimensions.width && row >= 0 && row < dimensions.height) {
+        onCellPaint(col, row)
+      }
+    },
+    [onCellPaint, dimensions.width, dimensions.height],
+  )
+
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (drawMode) {
+      paintCell(e.clientX, e.clientY)
+      return
+    }
     setIsDragging(true)
     setDragStart({ x: e.clientX, y: e.clientY })
   }
 
   const handleMouseMove = useCallback(
     (e: MouseEvent) => {
+      if (drawMode && e.buttons === 1) {
+        paintCell(e.clientX, e.clientY)
+        return
+      }
       if (isDragging) {
         const dx = e.clientX - dragStart.x
         const dy = e.clientY - dragStart.y
@@ -183,7 +215,7 @@ export function AsciiPreview({
         setDragStart({ x: e.clientX, y: e.clientY })
       }
     },
-    [isDragging, dragStart],
+    [drawMode, isDragging, dragStart, paintCell],
   )
 
   const handleMouseUp = useCallback(() => {
@@ -197,7 +229,7 @@ export function AsciiPreview({
   }
 
   useEffect(() => {
-    if (isDragging) {
+    if (isDragging || drawMode) {
       document.addEventListener('mousemove', handleMouseMove)
       document.addEventListener('mouseup', handleMouseUp)
     }
@@ -206,7 +238,7 @@ export function AsciiPreview({
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
     }
-  }, [isDragging, dragStart, handleMouseMove, handleMouseUp])
+  }, [isDragging, drawMode, dragStart, handleMouseMove, handleMouseUp])
 
   useEffect(() => {
     if (autoFit && program && containerSize) {
@@ -234,6 +266,15 @@ export function AsciiPreview({
       prevDimensionsRef.current = dimensions
     }
   }, [dimensions, autoFit])
+
+  useEffect(() => {
+    if (!drawMode) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onDrawModeChange?.(false)
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [drawMode, onDrawModeChange])
 
   // shift+2 auto fits canvas
   useHotkeys('shift+2', () => setAutoFit(true), [])
@@ -328,7 +369,7 @@ export function AsciiPreview({
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
         className="relative flex-1 overflow-auto"
-        style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+        style={{ cursor: drawMode ? DRAW_CURSOR : isDragging ? 'grabbing' : 'grab' }}
       >
         {isExporting && (
           <div className="absolute inset-0 z-50 flex items-center justify-center">
@@ -346,6 +387,7 @@ export function AsciiPreview({
             classic flex-center + overflow clipping bug). */}
         <div className="flex min-h-full min-w-full items-center justify-center">
         <div
+          ref={transformedDivRef}
           className="duration-50 relative transform-gpu overflow-hidden rounded-[1%] transition-transform ease-out"
           style={{
             transform: isExporting
