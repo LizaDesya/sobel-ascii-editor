@@ -8,7 +8,6 @@
 import { useEffect, useState } from 'react'
 
 import { Algorithm, DitheringAlgorithm } from '~/lib/image-processor'
-import type { ShapeLayout } from '~/lib/shape-placement'
 import { InputSwitch } from '~/lib/ui/src'
 import { InputNumber } from '~/lib/ui/src/components/InputNumber/InputNumber'
 import { InputSelect } from '~/lib/ui/src/components/InputSelect/InputSelect'
@@ -54,16 +53,12 @@ interface PreprocessingOptionsProps {
     dithering: boolean
     ditheringAlgorithm: DitheringAlgorithm
     algorithm: Algorithm
-    sobelDogSigma: number
-    sobelDogK: number
-    sobelDogTau: number
-    sobelDogThreshold: number
-    sobelKernelSize: number
-    sobelTileThreshold: number
+    edgeSmoothness: number
+    edgeSensitivity: number
+    edgeDensity: number
     placementMode: PlacementMode
     shapeContrast: number
     shapeBlankSpace: boolean
-    shapeLayout: ShapeLayout
   }
   updateSettings: (
     settings: Partial<PreprocessingOptionsProps['settings']>,
@@ -142,7 +137,7 @@ export function PreprocessingOptions({
         Brightness
       </InputNumber>
 
-      <InputNumber
+      {/* <InputNumber
         min={0}
         max={255}
         value={settings.whitePoint}
@@ -169,7 +164,7 @@ export function PreprocessingOptions({
         disabled
       >
         Blur
-      </InputNumber>
+      </InputNumber> */}
 
       {/* Value mode: Edge Detection sits above Invert */}
       {settings.placementMode === 'value' && (
@@ -189,60 +184,30 @@ export function PreprocessingOptions({
                 min={0.1}
                 max={5}
                 step={0.1}
-                value={settings.sobelDogSigma}
-                onChange={(value) => updateSettings({ sobelDogSigma: value })}
+                value={settings.edgeSmoothness}
+                onChange={(value) => updateSettings({ edgeSmoothness: value })}
               >
-                DoG sigma
-              </InputNumber>
-
-              <InputNumber
-                min={1}
-                max={5}
-                step={0.1}
-                value={settings.sobelDogK}
-                onChange={(value) => updateSettings({ sobelDogK: value })}
-              >
-                DoG sigma scale
+                Edge Smoothness
               </InputNumber>
 
               <InputNumber
                 min={0}
-                max={1.1}
-                step={0.05}
-                value={settings.sobelDogTau}
-                onChange={(value) => updateSettings({ sobelDogTau: value })}
-              >
-                DoG tau
-              </InputNumber>
-
-              <InputNumber
-                min={0.001}
-                max={0.1}
-                step={0.001}
-                value={settings.sobelDogThreshold}
-                onChange={(value) => updateSettings({ sobelDogThreshold: value })}
-              >
-                DoG threshold
-              </InputNumber>
-
-              <InputNumber
-                min={1}
-                max={10}
+                max={100}
                 step={1}
-                value={settings.sobelKernelSize}
-                onChange={(value) => updateSettings({ sobelKernelSize: value })}
+                value={settings.edgeSensitivity}
+                onChange={(value) => updateSettings({ edgeSensitivity: value })}
               >
-                Kernel size
+                Sensitivity
               </InputNumber>
 
               <InputNumber
                 min={0}
-                max={64}
+                max={100}
                 step={1}
-                value={settings.sobelTileThreshold}
-                onChange={(value) => updateSettings({ sobelTileThreshold: value })}
+                value={settings.edgeDensity}
+                onChange={(value) => updateSettings({ edgeDensity: value })}
               >
-                Tile threshold
+                Edge Density
               </InputNumber>
             </div>
           )}
@@ -316,20 +281,11 @@ export function PreprocessingOptions({
 
       {settings.placementMode === 'shape' && (
         <>
-          <InputSelect<ShapeLayout>
-            value={settings.shapeLayout}
-            onChange={(value) => updateSettings({ shapeLayout: value })}
-            options={['2x3', '3x3']}
-            labelize={(layout) => (layout === '2x3' ? '2×3 (6 circles)' : '3×3 (9 circles)')}
-          >
-            Sampling Layout
-          </InputSelect>
-
           <InputSwitch
             checked={settings.shapeBlankSpace}
             onChange={(checked) => updateSettings({ shapeBlankSpace: checked })}
           >
-            Blank Space
+            Include spaces
           </InputSwitch>
         </>
       )}

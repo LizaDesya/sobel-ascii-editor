@@ -63,12 +63,9 @@ export interface AsciiSettings {
     dithering: boolean
     ditheringAlgorithm: DitheringAlgorithm
     algorithm: Algorithm
-    sobelDogSigma: number
-    sobelDogK: number
-    sobelDogTau: number
-    sobelDogThreshold: number
-    sobelKernelSize: number
-    sobelTileThreshold: number
+    edgeSmoothness: number
+    edgeSensitivity: number
+    edgeDensity: number
     placementMode: PlacementMode
     shapeContrast: number
     shapeBlankSpace: boolean
@@ -519,16 +516,12 @@ export function AsciiArtGenerator() {
       prevPreprocessing.dithering !== preprocessing.dithering ||
       prevPreprocessing.ditheringAlgorithm !== preprocessing.ditheringAlgorithm ||
       prevPreprocessing.algorithm !== preprocessing.algorithm ||
-      prevPreprocessing.sobelDogSigma !== preprocessing.sobelDogSigma ||
-      prevPreprocessing.sobelDogK !== preprocessing.sobelDogK ||
-      prevPreprocessing.sobelDogTau !== preprocessing.sobelDogTau ||
-      prevPreprocessing.sobelDogThreshold !== preprocessing.sobelDogThreshold ||
-      prevPreprocessing.sobelKernelSize !== preprocessing.sobelKernelSize ||
-      prevPreprocessing.sobelTileThreshold !== preprocessing.sobelTileThreshold ||
+      prevPreprocessing.edgeSmoothness !== preprocessing.edgeSmoothness ||
+      prevPreprocessing.edgeSensitivity !== preprocessing.edgeSensitivity ||
+      prevPreprocessing.edgeDensity !== preprocessing.edgeDensity ||
       prevPreprocessing.placementMode !== preprocessing.placementMode ||
       prevPreprocessing.shapeContrast !== preprocessing.shapeContrast ||
-      prevPreprocessing.shapeBlankSpace !== preprocessing.shapeBlankSpace ||
-      prevPreprocessing.shapeLayout !== preprocessing.shapeLayout
+      prevPreprocessing.shapeBlankSpace !== preprocessing.shapeBlankSpace
     )
   }
 

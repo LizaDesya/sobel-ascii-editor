@@ -295,7 +295,7 @@ async function processImageData(
       height,
       settings.preprocessing.shapeContrast,
       settings.preprocessing.shapeBlankSpace,
-      settings.preprocessing.shapeLayout,
+      '3x3',
     )
   }
 
@@ -722,11 +722,30 @@ function computeSobelEdges(
 ): EdgeData {
   const gray = toGrayscale(rgba, srcWidth, srcHeight)
 
-  const sigma = Math.max(0.1, preprocessing.sobelDogSigma)
-  const kRatio = Math.max(1.0, preprocessing.sobelDogK)
-  const tau = preprocessing.sobelDogTau
-  const dogThreshold = preprocessing.sobelDogThreshold
-  const radius = Math.max(1, Math.floor(preprocessing.sobelKernelSize))
+  // Resolution-adaptive sigma. The Sobel pass runs on a (cols·8 × rows·8) grid,
+  // so a fixed pixel-space sigma covers a *smaller fraction* of the image as
+  // `cols` grows — fine detail at low res becomes texture noise at high res.
+  // Scale so "Edge Smoothness = 2" means the same visual width at any cols.
+  // Baseline 200 = DEFAULT_SETTINGS.output.columns.
+  const BASELINE_COLS = 200
+  const userSigma = Math.max(0.1, preprocessing.edgeSmoothness)
+  const sigma = userSigma * (cols / BASELINE_COLS)
+
+  // Locked: Mexican-hat ratio (canonical 1.6) and balanced τ (Acerola default).
+  const kRatio = 1.6
+  const tau = 1.0
+
+  // Auto-derive kernel half-width from effective sigma. 2σ captures ~95% of the
+  // Gaussian, sufficient for DoG (low frequencies are subtracted away anyway).
+  // Clamp so runaway resolutions don't blow up the inner loop.
+  const radius = Math.max(1, Math.min(10, Math.ceil(2 * sigma)))
+
+  // Sensitivity (0–100) → DoG threshold via symmetric log mapping.
+  //   sens=0   → 0.05    (low sensitivity, suppresses noise)
+  //   sens=50  → 0.005   (default — matches the previous default exactly)
+  //   sens=100 → 0.0005  (high sensitivity, picks up faint edges)
+  const sens = Math.max(0, Math.min(100, preprocessing.edgeSensitivity))
+  const dogThreshold = 0.005 * Math.pow(10, 1 - sens / 50)
 
   // Pass 1: two horizontal+vertical Gaussian blurs.
   const { a: blurA, b: blurB } = gaussianBlurPair(
@@ -854,7 +873,13 @@ function computeSobelEdges(
   // Per-tile vote, matching Acerola's groupshared histogram + maxBucket logic,
   // but explicitly ignoring the -1 ("no direction") entries that Acerola's
   // shader leaks into `buckets[-1]` via undefined indexing.
-  const tileThreshold = Math.max(0, Math.floor(preprocessing.sobelTileThreshold))
+  //
+  // Edge Density (0–100) → minimum vote count (0–64) via a cubic curve:
+  //   density=0   → 64 (no cell ever emits an edge)
+  //   density=50  → 8  (matches the previous default exactly)
+  //   density=100 → 0  (every cell with any direction gets an edge)
+  const density = Math.max(0, Math.min(100, preprocessing.edgeDensity))
+  const tileThreshold = Math.round(64 * Math.pow(1 - density / 100, 3))
   const edges: EdgeData = {}
   for (let cy = 0; cy < rows; cy++) {
     for (let cx = 0; cx < cols; cx++) {
