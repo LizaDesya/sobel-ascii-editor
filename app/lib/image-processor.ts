@@ -55,6 +55,7 @@ export type ImageProcessingResult = {
   width: number
   height: number
   processedImageUrl?: string
+  rawPixelatedUrl?: string
   frames?: AsciiImageData[]
   edgeFrames?: EdgeData[]
   shapeFrames?: ShapeData[]
@@ -76,6 +77,7 @@ export async function processAnimatedMedia(
   firstFrameEdgeData: EdgeData | null
   firstFrameShapeData: ShapeData | null
   firstFrameUrl: string | null
+  firstFrameRawUrl: string | null
 }> {
   const processedFrames: AsciiImageData[] = []
   const processedEdgeFrames: EdgeData[] = []
@@ -84,6 +86,7 @@ export async function processAnimatedMedia(
   let firstFrameEdgeData: EdgeData | null = null
   let firstFrameShapeData: ShapeData | null = null
   let firstFrameUrl: string | null = null
+  let firstFrameRawUrl: string | null = null
 
   for (let i = 0; i < rawFrames.length; i++) {
     if (progressCallback) {
@@ -97,6 +100,7 @@ export async function processAnimatedMedia(
       firstFrameEdgeData = frameResult.edgeData || null
       firstFrameShapeData = frameResult.shapeData || null
       firstFrameUrl = frameResult.processedImageUrl || null
+      firstFrameRawUrl = frameResult.rawPixelatedUrl || null
     }
 
     processedFrames.push(frameResult.data)
@@ -124,6 +128,7 @@ export async function processAnimatedMedia(
     firstFrameEdgeData,
     firstFrameShapeData,
     firstFrameUrl,
+    firstFrameRawUrl,
   }
 }
 
@@ -161,6 +166,7 @@ export async function processImage(
         width,
         height,
         processedImageUrl: result.processedImageUrl,
+        rawPixelatedUrl: result.rawPixelatedUrl,
       })
     }
 
@@ -197,10 +203,38 @@ async function processImageData(
   edgeData?: EdgeData
   shapeData?: ShapeData
   processedImageUrl?: string
+  rawPixelatedUrl?: string
 }> {
   const ctx = sourceCanvas.getContext('2d')!
   const width = settings.output.columns
   const height = settings.output.rows
+
+  // Center-pixel sampling offsets (dimensions unchanged by preprocessing)
+  const srcWidth = sourceCanvas.width
+  const srcHeight = sourceCanvas.height
+  const pixelWidth = srcWidth / width
+  const pixelHeight = srcHeight / height
+  const offsetX = pixelWidth / 2
+  const offsetY = pixelHeight / 2
+
+  // Capture raw (pre-color-adjustment) pixelated image before preprocessing modifies the canvas
+  const rawCanvas = document.createElement('canvas')
+  rawCanvas.width = width
+  rawCanvas.height = height
+  const rawCtx = rawCanvas.getContext('2d')!
+  configureResizeContext(rawCtx, settings.preprocessing.blur)
+  rawCtx.drawImage(
+    sourceCanvas,
+    offsetX,
+    offsetY,
+    srcWidth - offsetX * 2,
+    srcHeight - offsetY * 2,
+    0,
+    0,
+    width,
+    height,
+  )
+  const rawPixelatedUrl = rawCanvas.toDataURL('image/png')
 
   // Apply preprocessing
   applyImagePreprocessing(ctx, settings.preprocessing)
@@ -213,14 +247,6 @@ async function processImageData(
   resizeCanvas.height = height
 
   configureResizeContext(resizeCtx, settings.preprocessing.blur)
-
-  // Apply center-pixel sampling for better resizing
-  const srcWidth = sourceCanvas.width
-  const srcHeight = sourceCanvas.height
-  const pixelWidth = srcWidth / width
-  const pixelHeight = srcHeight / height
-  const offsetX = pixelWidth / 2
-  const offsetY = pixelHeight / 2
 
   resizeCtx.drawImage(
     sourceCanvas,
@@ -299,7 +325,7 @@ async function processImageData(
     )
   }
 
-  return { data, edgeData, shapeData, processedImageUrl }
+  return { data, edgeData, shapeData, processedImageUrl, rawPixelatedUrl }
 }
 
 function applyImagePreprocessing(
@@ -443,7 +469,7 @@ function normalizeWithPointAdjustment(
 }
 
 // Image processing utilities
-function adjustContrast(ctx: CanvasRenderingContext2D, contrast: number) {
+export function adjustContrast(ctx: CanvasRenderingContext2D, contrast: number) {
   const imageData = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height)
   const data = imageData.data
   for (let i = 0; i < data.length; i += 4) {
@@ -953,6 +979,7 @@ function handleGifExtraction(
         width: settings.output.columns,
         height: settings.output.rows,
         processedImageUrl: initialFrame.processedImageUrl,
+        rawPixelatedUrl: initialFrame.rawPixelatedUrl,
         frames,
         frameCount: frames.length,
         sourceFps: 10, // Default assumption for GIFs

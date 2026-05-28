@@ -5,7 +5,7 @@
  *
  * Copyright Oxide Computer Company
  */
-import { InputSwitch } from '~/lib/ui/src'
+import { InputButton, InputNumber, InputSwitch } from '~/lib/ui/src'
 import { InputSelect } from '~/lib/ui/src/components/InputSelect/InputSelect'
 
 import type { ColorMappingType, GridType } from './ascii-art-generator'
@@ -16,6 +16,10 @@ interface OutputOptionsProps {
   settings: {
     grid: GridType
     showUnderlyingImage: boolean
+    separateBgColorEditing: boolean
+    bgBrightness: number
+    bgContrast: number
+    bgInvert: boolean
     columns: number
     rows: number
     aspectRatio?: number
@@ -26,6 +30,10 @@ interface OutputOptionsProps {
     settings: Partial<{
       grid: GridType
       showUnderlyingImage: boolean
+      separateBgColorEditing: boolean
+      bgBrightness: number
+      bgContrast: number
+      bgInvert: boolean
       columns: number
       rows: number
       aspectRatio?: number
@@ -34,6 +42,7 @@ interface OutputOptionsProps {
     }>,
   ) => void
   sourceImageDimensions?: { width: number; height: number }
+  onExportPixelatedImage: () => void
 }
 
 // Character-set selection lives in the Value section of `preprocessing-options.tsx`
@@ -60,6 +69,7 @@ export function OutputOptions({
   settings,
   updateSettings,
   sourceImageDimensions,
+  onExportPixelatedImage,
 }: OutputOptionsProps) {
   return (
     <Container>
@@ -113,13 +123,62 @@ export function OutputOptions({
         Grid Lines
       </InputSelect>
 
-      <div className="flex items-center justify-between">
-        <InputSwitch
-          checked={settings.showUnderlyingImage}
-          onChange={(checked) => updateSettings({ showUnderlyingImage: checked })}
-        >
-          Show Underlying Image
-        </InputSwitch>
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <InputSwitch
+            checked={settings.showUnderlyingImage}
+            onChange={(checked) => updateSettings({ showUnderlyingImage: checked })}
+          >
+            Show Underlying Image
+          </InputSwitch>
+        </div>
+
+        {settings.showUnderlyingImage && (
+          <div className="dedent mt-0">
+            <InputSwitch
+              checked={settings.separateBgColorEditing}
+              onChange={(checked) => updateSettings({ separateBgColorEditing: checked })}
+            >
+              Separate color editing
+            </InputSwitch>
+
+            {settings.separateBgColorEditing && (
+              <div className="dedent mt-0">
+                <InputNumber
+                  min={-255}
+                  max={255}
+                  value={settings.bgBrightness}
+                  onChange={(v) => updateSettings({ bgBrightness: v ?? 0 })}
+                >
+                  Brightness
+                </InputNumber>
+                <InputNumber
+                  min={0.5}
+                  max={3.0}
+                  step={0.1}
+                  value={settings.bgContrast}
+                  onChange={(v) => updateSettings({ bgContrast: v ?? 1.0 })}
+                >
+                  Contrast
+                </InputNumber>
+                <InputSwitch
+                  checked={settings.bgInvert}
+                  onChange={(checked) => updateSettings({ bgInvert: checked })}
+                >
+                  Invert colors
+                </InputSwitch>
+              </div>
+            )}
+
+            <InputButton
+              variant="secondary"
+              className="mt-2 w-full"
+              onClick={onExportPixelatedImage}
+            >
+              Export pixelated image
+            </InputButton>
+          </div>
+        )}
       </div>
     </Container>
   )

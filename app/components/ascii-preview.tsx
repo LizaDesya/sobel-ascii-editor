@@ -35,6 +35,11 @@ interface AsciiPreviewProps {
   gridType: GridType
   showUnderlyingImage: boolean
   underlyingImageUrl: string | null
+  rawUnderlyingImageUrl?: string | null
+  separateBgColorEditing?: boolean
+  bgBrightness?: number
+  bgContrast?: number
+  bgInvert?: boolean
   settings: {
     animationLength: number
     frameRate: number
@@ -129,6 +134,11 @@ export function AsciiPreview({
   gridType,
   showUnderlyingImage,
   underlyingImageUrl,
+  rawUnderlyingImageUrl,
+  separateBgColorEditing,
+  bgBrightness = 0,
+  bgContrast = 1.0,
+  bgInvert = false,
   settings,
   animationController,
   setAnimationController,
@@ -363,7 +373,26 @@ export function AsciiPreview({
                   style={{ padding: paddingPixels }}
                 >
                   <img
-                    src={underlyingImageUrl}
+                    src={
+                      separateBgColorEditing
+                        ? (rawUnderlyingImageUrl ?? underlyingImageUrl)
+                        : underlyingImageUrl
+                    }
+                    style={
+                      separateBgColorEditing
+                        ? {
+                            filter: [
+                              bgBrightness !== 0
+                                ? `brightness(${1 + bgBrightness / 255})`
+                                : '',
+                              bgContrast !== 1.0 ? `contrast(${bgContrast})` : '',
+                              bgInvert ? 'invert(1)' : '',
+                            ]
+                              .filter(Boolean)
+                              .join(' ') || undefined,
+                          }
+                        : undefined
+                    }
                     alt="Source image"
                     className="h-full w-full object-fill [image-rendering:pixelated]"
                   />

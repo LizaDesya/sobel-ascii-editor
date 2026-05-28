@@ -6,6 +6,7 @@
  * Copyright Oxide Computer Company
  */
 
+import { saveAs } from 'file-saver'
 import { decompressFrames, ParsedFrame, ParsedGif, parseGIF } from 'gifuct-js'
 import { motion } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -32,6 +33,7 @@ import {
 import type { ShapeLayout } from '~/lib/shape-placement'
 import type { AsciiImageData, EdgeData, ShapeData } from '~/lib/types'
 import { cn } from '~/lib/utils'
+import { CHAR_HEIGHT, CHAR_WIDTH } from '~/components/dimension-utils'
 import { DEFAULT_SETTINGS, TEMPLATES, TemplateType } from '~/templates'
 
 import { AnimationOptions } from './animation-options'
@@ -75,6 +77,10 @@ export interface AsciiSettings {
     characterSet: string
     grid: GridType
     showUnderlyingImage: boolean
+    separateBgColorEditing: boolean
+    bgBrightness: number
+    bgContrast: number
+    bgInvert: boolean
     columns: number
     rows: number
     aspectRatio?: number
@@ -103,6 +109,7 @@ export function AsciiArtGenerator() {
   const [settings, setSettings] = useState<AsciiSettings>(DEFAULT_SETTINGS)
   const [program, setProgram] = useState<Program | null>(null)
   const [processedImageUrl, setProcessedImageUrl] = useState<string | null>(null)
+  const [rawProcessedImageUrl, setRawProcessedImageUrl] = useState<string | null>(null)
   const [animationController, setAnimationController] = useState<AnimationController>(null)
   const [dragActive, setDragActive] = useState(false)
   const [pendingCode, setPendingCode] = useState('')
@@ -254,6 +261,9 @@ export function AsciiArtGenerator() {
             if (gifResult.processedImageUrl) {
               setProcessedImageUrl(gifResult.processedImageUrl)
             }
+            if (gifResult.rawPixelatedUrl) {
+              setRawProcessedImageUrl(gifResult.rawPixelatedUrl)
+            }
 
             imageData = gifResult.imageData
             frames = gifResult.frames
@@ -268,6 +278,9 @@ export function AsciiArtGenerator() {
             // Update state with processed data
             if (staticResult.processedImageUrl) {
               setProcessedImageUrl(staticResult.processedImageUrl)
+            }
+            if (staticResult.rawPixelatedUrl) {
+              setRawProcessedImageUrl(staticResult.rawPixelatedUrl)
             }
 
             imageData = staticResult.imageData
@@ -319,6 +332,9 @@ export function AsciiArtGenerator() {
       if (result.processedImageUrl) {
         setProcessedImageUrl(result.processedImageUrl)
       }
+      if (result.rawPixelatedUrl) {
+        setRawProcessedImageUrl(result.rawPixelatedUrl)
+      }
       setCurrentImageData(result.data)
       setCurrentFrames(null)
       setCurrentEdgeData(result.edgeData ?? null)
@@ -338,6 +354,7 @@ export function AsciiArtGenerator() {
         edgeData: result.edgeData ?? null,
         shapeData: result.shapeData ?? null,
         processedImageUrl: result.processedImageUrl,
+        rawPixelatedUrl: result.rawPixelatedUrl,
       }
     } catch (error) {
       handleProcessingError('processing image', error)
@@ -357,6 +374,7 @@ export function AsciiArtGenerator() {
     shapeData: ShapeData | null
     shapeFrames: ShapeData[] | null
     processedImageUrl: string | null
+    rawPixelatedUrl: string | null
   } | null> => {
     const processGif = async (): Promise<{
       frames: number
@@ -367,6 +385,7 @@ export function AsciiArtGenerator() {
       shapeData: ShapeData | null
       shapeFramesData: ShapeData[] | null
       processedImageUrl: string | null
+      rawPixelatedUrl: string | null
     }> => {
       // Convert data URL to binary data
       const bytes = dataUrlToUint8Array(gifData)
@@ -392,6 +411,7 @@ export function AsciiArtGenerator() {
 
       // Set preview
       setProcessedImageUrl(result.firstFrameUrl)
+      setRawProcessedImageUrl(result.firstFrameRawUrl)
 
       setCurrentImageData(result.firstFrameData)
       setCurrentFrames(result.frames)
@@ -420,6 +440,7 @@ export function AsciiArtGenerator() {
         shapeData: result.firstFrameShapeData,
         shapeFramesData: result.shapeFrames,
         processedImageUrl: result.firstFrameUrl,
+        rawPixelatedUrl: result.firstFrameRawUrl,
       }
     }
 
@@ -436,6 +457,7 @@ export function AsciiArtGenerator() {
         shapeData: result.shapeData,
         shapeFrames: result.shapeFramesData,
         processedImageUrl: result.processedImageUrl,
+        rawPixelatedUrl: result.rawPixelatedUrl,
       }
     } catch (_error) {
       toast.dismiss()
@@ -443,6 +465,37 @@ export function AsciiArtGenerator() {
       return null
     }
   }
+
+  const exportPixelatedImage = useCallback(() => {
+    const useRaw = settings.output.separateBgColorEditing
+    const url = useRaw
+      ? rawProcessedImageUrl || settings.source.data
+      : processedImageUrl || settings.source.data
+    if (!url) return
+    const img = new Image()
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.round(img.width * CHAR_WIDTH)
+      canvas.height = Math.round(img.height * CHAR_HEIGHT)
+      const ctx = canvas.getContext('2d')!
+      ctx.imageSmoothingEnabled = false
+      if (useRaw) {
+        const { bgBrightness, bgContrast, bgInvert } = settings.output
+        const filterParts = [
+          bgBrightness !== 0 ? `brightness(${1 + bgBrightness / 255})` : '',
+          bgContrast !== 1.0 ? `contrast(${bgContrast})` : '',
+          bgInvert ? 'invert(1)' : '',
+        ].filter(Boolean)
+        if (filterParts.length > 0) ctx.filter = filterParts.join(' ')
+      }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      ctx.filter = 'none'
+      canvas.toBlob((blob) => {
+        if (blob) saveAs(blob, 'pixelated-image.png')
+      })
+    }
+    img.src = url
+  }, [settings, processedImageUrl, rawProcessedImageUrl])
 
   const processCodeSource = async (
     columns: number,
@@ -874,6 +927,7 @@ export function AsciiArtGenerator() {
                 settings={settings.output}
                 updateSettings={(changes) => updateSettings('output', changes)}
                 sourceImageDimensions={settings.source.imageDimensions}
+                onExportPixelatedImage={exportPixelatedImage}
               />
               {/* Preprocessing — full-bleed blue band; negative margins absorb the parent's space-y-6 gap on both sides */}
               <div className="-mb-6 -mt-6 bg-blue-500/[0.08] py-4">
@@ -985,6 +1039,11 @@ export function AsciiArtGenerator() {
                 gridType={settings.output.grid}
                 showUnderlyingImage={settings.output.showUnderlyingImage}
                 underlyingImageUrl={processedImageUrl || settings.source.data}
+                rawUnderlyingImageUrl={rawProcessedImageUrl || settings.source.data}
+                separateBgColorEditing={settings.output.separateBgColorEditing}
+                bgBrightness={settings.output.bgBrightness}
+                bgContrast={settings.output.bgContrast}
+                bgInvert={settings.output.bgInvert}
                 settings={{ ...settings.animation, ...settings.export }}
                 animationController={animationController}
                 setAnimationController={setAnimationController}
