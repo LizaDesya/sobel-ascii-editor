@@ -114,42 +114,6 @@ export function PreprocessingOptions({
         Placement mode
       </InputSelect>
 
-      {/* Draw tool */}
-      <div className="space-y-2">
-        <div className="text-xs font-medium uppercase tracking-wider text-secondary">Draw</div>
-        <div className="flex items-center gap-2">
-          <InputButton
-            variant={drawMode ? 'default' : 'secondary'}
-            icon
-            onClick={() => onDrawModeChange(!drawMode)}
-            className="!w-8 shrink-0"
-          >
-            <PencilIcon className="h-3.5 w-3.5" />
-          </InputButton>
-          <input
-            type="text"
-            maxLength={1}
-            value={brushChar}
-            onChange={(e) => {
-              const val = e.target.value
-              if (val.length === 0) return
-              const ch = val[val.length - 1]
-              const code = ch.charCodeAt(0)
-              // Restrict to printable ASCII — non-ASCII glyphs (e.g. ✚) fall back to
-              // a non-monospace font and shove the rest of the row right.
-              if (code >= 0x20 && code <= 0x7e) onBrushCharChange(ch)
-            }}
-            className="h-8 w-full rounded border bg-transparent px-2 font-mono text-sm text-default border-default focus:outline-none focus:ring-1 focus:ring-[--mt-highlight]"
-          />
-        </div>
-        <InputButton variant="secondary" onClick={onResetDrawing}>
-          Reset drawing
-        </InputButton>
-        <p className="text-xs text-tertiary">
-          Changing canvas resolution will remove all drawn changes.
-        </p>
-      </div>
-
       {/* Contrast — value mode uses pixel-level contrast, shape mode uses shape-vector contrast */}
       {settings.placementMode === 'value' && (
         <InputNumber
@@ -336,6 +300,66 @@ export function PreprocessingOptions({
           </InputSwitch>
         </>
       )}
+
+      {/* Draw — own subsection, sits at the end of preprocessing options */}
+      <div className="flex flex-col gap-2 pt-2">
+        <div className="flex items-center gap-2">
+          <label
+            className="text-secondary"
+            style={{
+              fontSize: 'var(--mt-font-size-label)',
+              fontFamily: 'var(--mt-font-label)',
+            }}
+          >
+            Draw
+          </label>
+          <InputButton
+            variant={drawMode ? 'default' : 'secondary'}
+            icon
+            onClick={() => onDrawModeChange(!drawMode)}
+            className="!w-8 shrink-0"
+          >
+            <PencilIcon className="h-3.5 w-3.5" />
+          </InputButton>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <label
+            className="text-secondary"
+            htmlFor="draw-glyph"
+            style={{
+              fontSize: 'var(--mt-font-size-label)',
+              fontFamily: 'var(--mt-font-label)',
+            }}
+          >
+            Draw glyph:
+          </label>
+          <input
+            id="draw-glyph"
+            type="text"
+            maxLength={1}
+            value={brushChar}
+            onChange={(e) => {
+              const val = e.target.value
+              if (val.length === 0) return
+              const ch = val[val.length - 1]
+              const code = ch.charCodeAt(0)
+              // Restrict to printable ASCII — non-ASCII glyphs (e.g. ✚) fall back to
+              // a non-monospace font and shove the rest of the row right.
+              if (code >= 0x20 && code <= 0x7e) onBrushCharChange(ch)
+            }}
+            className="ui-draw-glyph-input h-8 w-8 shrink-0 text-center font-mono text-sm"
+          />
+        </div>
+
+        <InputButton variant="secondary" onClick={onResetDrawing}>
+          Reset drawing
+        </InputButton>
+
+        <p className="text-xs text-tertiary">
+          Changing canvas resolution will remove all drawn changes.
+        </p>
+      </div>
     </Container>
   )
 }

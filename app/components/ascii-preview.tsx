@@ -180,24 +180,28 @@ export function AsciiPreview({
   }
 
   const paintCell = useCallback(
-    (clientX: number, clientY: number) => {
+    (clientX: number, clientY: number): boolean => {
       const el = transformedDivRef.current
-      if (!el || !onCellPaint) return
+      if (!el || !onCellPaint) return false
       const pre = el.querySelector('pre')
-      if (!pre) return
+      if (!pre) return false
       const rect = pre.getBoundingClientRect()
       const col = Math.floor(((clientX - rect.left) / rect.width) * dimensions.width)
       const row = Math.floor(((clientY - rect.top) / rect.height) * dimensions.height)
       if (col >= 0 && col < dimensions.width && row >= 0 && row < dimensions.height) {
         onCellPaint(col, row)
+        return true
       }
+      return false
     },
     [onCellPaint, dimensions.width, dimensions.height],
   )
 
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     if (drawMode) {
-      paintCell(e.clientX, e.clientY)
+      // Clicks on the canvas paint; clicks outside the rendered ASCII exit draw mode.
+      const hit = paintCell(e.clientX, e.clientY)
+      if (!hit) onDrawModeChange?.(false)
       return
     }
     setIsDragging(true)
@@ -207,6 +211,8 @@ export function AsciiPreview({
   const handleMouseMove = useCallback(
     (e: MouseEvent) => {
       if (drawMode && e.buttons === 1) {
+        // Dragging while painting: out-of-bounds samples are ignored, but
+        // don't drop draw mode — the user may swing back over the canvas.
         paintCell(e.clientX, e.clientY)
         return
       }

@@ -112,6 +112,25 @@
     @apply mt-2 flex flex-col gap-2 border-l py-1 pl-3 border-default;
   }
 
+  /* Draw-glyph brush input — mirrors `.ui-text input` so it matches every
+     other text box (bg, border, hover, focus ring), with the typed glyph
+     rendered in pencil-cursor green. */
+  .ui-draw-glyph-input {
+    color: #48d597;
+    border-radius: var(--mt-radius-sm);
+    border: 1px solid var(--mt-border);
+    background: var(--mt-background);
+    transition: border-color var(--mt-transition-fast);
+  }
+  .ui-draw-glyph-input:hover {
+    border-color: var(--mt-highlight);
+  }
+  .ui-draw-glyph-input:focus {
+    outline: none;
+    border-color: var(--mt-highlight);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--mt-highlight) 40%, transparent);
+  }
+
   /* Accordion animations */
   @keyframes slideDown {
     from {

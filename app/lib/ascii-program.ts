@@ -143,6 +143,15 @@ export async function createProgramFromProcessor(
         result = { char: ' ' }
       }
 
+      // User paint layer: always wins over algorithm output. Checked before
+      // edge/shape overlays so their early returns don't shadow paints.
+      if (paintOverlay) {
+        const painted = paintOverlay.paintData[pos.x]?.[pos.y]
+        if (painted !== undefined) {
+          return typeof result === 'string' ? { char: painted } : { ...result, char: painted }
+        }
+      }
+
       // Sobel edge overlay: replace the cell's character with an edge contour
       // character when the preprocessing step detected one for this cell.
       if (edgeOverlay) {
@@ -173,14 +182,6 @@ export async function createProgramFromProcessor(
         }
         if (shape) {
           return typeof result === 'string' ? { char: shape } : { ...result, char: shape }
-        }
-      }
-
-      // User paint layer: always wins over algorithm output.
-      if (paintOverlay) {
-        const painted = paintOverlay.paintData[pos.x]?.[pos.y]
-        if (painted !== undefined) {
-          return typeof result === 'string' ? { char: painted } : { ...result, char: painted }
         }
       }
 
