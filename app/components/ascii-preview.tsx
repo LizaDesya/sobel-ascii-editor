@@ -183,7 +183,9 @@ export function AsciiPreview({
     (clientX: number, clientY: number) => {
       const el = transformedDivRef.current
       if (!el || !onCellPaint) return
-      const rect = el.getBoundingClientRect()
+      const pre = el.querySelector('pre')
+      if (!pre) return
+      const rect = pre.getBoundingClientRect()
       const col = Math.floor(((clientX - rect.left) / rect.width) * dimensions.width)
       const row = Math.floor(((clientY - rect.top) / rect.height) * dimensions.height)
       if (col >= 0 && col < dimensions.width && row >= 0 && row < dimensions.height) {
