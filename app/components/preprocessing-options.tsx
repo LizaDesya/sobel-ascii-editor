@@ -132,7 +132,12 @@ export function PreprocessingOptions({
             value={brushChar}
             onChange={(e) => {
               const val = e.target.value
-              if (val.length > 0) onBrushCharChange(val[val.length - 1])
+              if (val.length === 0) return
+              const ch = val[val.length - 1]
+              const code = ch.charCodeAt(0)
+              // Restrict to printable ASCII — non-ASCII glyphs (e.g. ✚) fall back to
+              // a non-monospace font and shove the rest of the row right.
+              if (code >= 0x20 && code <= 0x7e) onBrushCharChange(ch)
             }}
             className="h-8 w-full rounded border bg-transparent px-2 font-mono text-sm text-default border-default focus:outline-none focus:ring-1 focus:ring-[--mt-highlight]"
           />

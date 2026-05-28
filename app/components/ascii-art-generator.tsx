@@ -125,7 +125,7 @@ export function AsciiArtGenerator() {
   // Draw tool state
   const paintDataRef = useRef<PaintData>({})
   const [drawMode, setDrawMode] = useState(false)
-  const [brushChar, setBrushChar] = useState('✚')
+  const [brushChar, setBrushChar] = useState('+')
 
   // Processing state
   const [isExporting, setIsExporting] = useState(false)
