@@ -90,7 +90,7 @@ Two layers, both in [ascii-art-generator.tsx](app/components/ascii-art-generator
 - [app/lib/localUtils/image.ts](app/lib/localUtils/image.ts) — `valueToChar`, `getImageValue`, `getEdgeChar`. **Public surface for user scripts** — renaming or changing signatures will silently break user projects.
 - [app/components/ascii-art-generator.tsx](app/components/ascii-art-generator.tsx) — top-level state, `AsciiSettings` type, reprocessing effect, "loading…" indicator.
 - [app/components/preprocessing-options.tsx](app/components/preprocessing-options.tsx) — placement mode dropdown, Value section (Sobel + character set), Shape section (layout + contrast + blank toggle).
-- [app/components/output-options.tsx](app/components/output-options.tsx) — `predefinedCharacterSets` (incl. `acerola: ' .icoP0?@■'`). Character set selector moved out to preprocessing-options.
+- [app/components/output-options.tsx](app/components/output-options.tsx) — `predefinedCharacterSets` (incl. `acerola: ' .icoP0?@■'`). Character set selector moved out to preprocessing-options. Also houses the "Show Underlying Image" section with its sub-controls (separate color editing + export button).
 - [app/templates.ts](app/templates.ts) — `DEFAULT_SETTINGS` and demo templates.
 - [app/components/ascii-preview.tsx](app/components/ascii-preview.tsx) — preview viewport with zoom/pan/auto-fit.
 - [app/index.css](app/index.css) — `@font-face` declarations including DepartureMono (used by shape-mode glyph rasterization).
@@ -145,6 +145,18 @@ Locked internally (not user-configurable): `kRatio = 1.6` (Acerola `_SigmaScale`
 
 Any new preprocessing field that affects the pixel output must be added to `haveProcessingSettingsChanged()` in [ascii-art-generator.tsx](app/components/ascii-art-generator.tsx), or the image won't reprocess on change.
 
+`AsciiSettings.output` — underlying image sub-controls:
+
+| Field | Default | Notes |
+| --- | --- | --- |
+| `showUnderlyingImage` | `false` | Toggles BG image layer in the preview. |
+| `separateBgColorEditing` | `false` | When false, BG image shows `processedImageUrl` (main color adjustments baked in). When true, shows `rawPixelatedUrl` + applies its own CSS filter. |
+| `bgBrightness` | `0` | −255…255. Applied as CSS `brightness(1 + value/255)`. |
+| `bgContrast` | `1.0` | 0.5…3.0. Applied as CSS `contrast(value)`. |
+| `bgInvert` | `false` | Applied as CSS `invert(1)`. |
+
+`rawPixelatedUrl` — a `cols × rows` PNG captured in `processImageData` ([image-processor.ts](app/lib/image-processor.ts)) **before** `applyImagePreprocessing` runs. Stored in `rawProcessedImageUrl` state in [ascii-art-generator.tsx](app/components/ascii-art-generator.tsx) alongside `processedImageUrl`. Used by the BG layer when `separateBgColorEditing` is on.
+
 ## Pending work — TODOs
 
 In rough priority order. Listed here so a future session can pick up cleanly.
@@ -181,6 +193,8 @@ In rough priority order. Listed here so a future session can pick up cleanly.
 - **Per-dim normalization floor (shape mode).** `shape-placement.ts` floors the per-dim divisor at 0.3. Removing it brings back a hard-to-diagnose bug where dark cells flicker between dense glyphs as brightness/contrast move, because dims with low charset max get amplified 5–10×. The 3×3 layout has more dims and more low-max dims, so the floor matters more there.
 - **DARK_GATE only fires when Blank Space is on.** Toggle off and you may see the original flicker return on noisy/low-contrast images. That's by design — the gate's "snap to space" only makes sense when space is in the charset.
 - **DepartureMono must be `await document.fonts.load`'d before rasterizing.** Without the await the first few glyphs come out in the fallback monospace, producing mismatched shape vectors that the cache then freezes. Already handled in `generateCharacterShapes`, but watch out if you refactor.
+- **BG image color formula: use CSS filter, not `adjustBrightness`.** The preview applies BG color changes via CSS `filter: brightness(1 + value/255)`. The `adjustBrightness` function in `image-processor.ts` uses a different curve (`1 + value/50` for positives) — using it for the pixelated image export produces a much darker/brighter result than what the preview shows. The export callback in `ascii-art-generator.tsx` uses `ctx.filter` with the same CSS formula before `drawImage` to guarantee they match.
+- **Pixelated image export sizing: use CHAR_WIDTH × CHAR_HEIGHT, not a uniform scale.** Character cells are `7.45 × 14.4` px (`CHAR_WIDTH`/`CHAR_HEIGHT` in [dimension-utils.ts](app/components/dimension-utils.ts)) — not square. Scaling the `cols × rows` source image by a uniform factor (e.g. ×8) produces a horizontally stretched result. The export canvas should be `Math.round(cols * CHAR_WIDTH) × Math.round(rows * CHAR_HEIGHT)`.
 - **Shape vs Sobel overlay precedence.** In `ascii-program.ts → main`, edge overlay runs before shape overlay, but both can't be populated simultaneously (the UI gates them in `processCodeSource`). Don't rely on the ordering — if you ever want both active, you'll need to design a real merge.
 
 ## What's intentionally not implemented
