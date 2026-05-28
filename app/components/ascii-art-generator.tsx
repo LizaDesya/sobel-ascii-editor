@@ -861,12 +861,8 @@ export function AsciiArtGenerator() {
             pointerEvents: showSidebar ? 'auto' : 'none',
           }}
         >
-          <div className="flex items-center justify-center rounded px-4 py-3 text-center font-mono text-default [font-size:12px] [&>*]:border-y [&>*]:border-r [&>*]:px-1 [&>*]:py-0.5 [&>*]:border-default">
-            <div className="rounded-l border-l">M</div>
-            <div>I</div>
-            <div>T</div>
-            <div>O</div>
-            <div className="rounded-r">S</div>
+          <div className="flex items-center justify-center px-4 py-3 text-center font-mono text-default [font-size:12px]">
+            tendril-ascii
           </div>
 
           <hr />
@@ -928,17 +924,6 @@ export function AsciiArtGenerator() {
                 disabled={!program}
                 exportSettings={settings.export}
               />
-            </div>
-            <div className="flex grow items-end p-3 pb-3">
-              <a
-                href="https://oxide.computer"
-                target="_blank"
-                className="flex items-center gap-2 font-mono uppercase text-quaternary [font-size:12px]"
-              >
-                /*
-                <div className="link-with-underline text-secondary">Made by Oxide</div>
-                */
-              </a>
             </div>
           </div>
           {/* Project Management */}
