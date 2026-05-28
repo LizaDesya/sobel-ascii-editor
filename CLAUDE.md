@@ -86,7 +86,7 @@ Two layers, both in [ascii-art-generator.tsx](app/components/ascii-art-generator
 - [app/lib/image-processor.ts](app/lib/image-processor.ts) — image pipeline, `computeSobelEdges`, `gaussianBlurPair`, `toGrayscale`. The Sobel algorithm lives here. Also dispatches to the shape branch when `placementMode === 'shape'`.
 - [app/lib/shape-placement.ts](app/lib/shape-placement.ts) — shape mode: circle layouts (`LAYOUTS`), `generateCharacterShapes`, `computeShapePlacements`, `luminanceRec709`. Self-contained.
 - [app/lib/ascii-program.ts](app/lib/ascii-program.ts) — `createProgramFromProcessor` wraps the user program and applies the edge overlay or shape overlay (mutually exclusive).
-- [app/lib/types.ts](app/lib/types.ts) — `AsciiImageData`, `EdgeData`, `ShapeData`. Tiny.
+- [app/lib/types.ts](app/lib/types.ts) — `AsciiImageData`, `EdgeData`, `ShapeData`, `PaintData`. Tiny.
 - [app/lib/localUtils/image.ts](app/lib/localUtils/image.ts) — `valueToChar`, `getImageValue`, `getEdgeChar`. **Public surface for user scripts** — renaming or changing signatures will silently break user projects.
 - [app/components/ascii-art-generator.tsx](app/components/ascii-art-generator.tsx) — top-level state, `AsciiSettings` type, reprocessing effect, "loading…" indicator.
 - [app/components/preprocessing-options.tsx](app/components/preprocessing-options.tsx) — placement mode dropdown, Value section (Sobel + character set), Shape section (layout + contrast + blank toggle).
@@ -125,6 +125,29 @@ Two switchable sampling layouts in `LAYOUTS`:
 - **`'3x3'`** — 9 circles in an evenly spaced 3×3 grid, no stagger. Radius 0.18 to limit cross-column overlap. Catches centred stems at the cost of a 9-D vector.
 
 The choice is exposed as a dropdown in the Shape section ("Sampling Layout"). 3×3 is more prone to dark-cell noise (more dims → more chances for one to outlier) — the dark gate exists primarily to defend 3×3.
+
+## Draw mode (manual cell override)
+
+A user-paint layer that lives on top of all algorithm output. Toggled from the **Draw** subsection at the bottom of preprocessing options (pencil button + `Draw glyph:` square input + `Reset drawing` button). Works in both Value and Shape placement modes.
+
+State lives in [ascii-art-generator.tsx](app/components/ascii-art-generator.tsx):
+
+- `paintDataRef: useRef<PaintData>({})` — sparse `{ [col]: { [row]: char } }` map. A ref, not state, so paints don't retrigger React renders or reprocessing.
+- `drawMode: boolean`, `brushChar: string` — UI state. Default brush is `'+'` (printable ASCII).
+
+Pipeline:
+
+1. User clicks the pencil → `drawMode = true`. The preview cursor switches to the green pencil SVG.
+2. Click/drag inside the canvas → [ascii-preview.tsx](app/components/ascii-preview.tsx) `paintCell(clientX, clientY)` measures the **`<pre>` element's** bounding rect (not the wrapping `transformedDivRef`, which includes AsciiAnimation padding), maps screen coords to (col, row), and calls `onCellPaint(col, row)`.
+3. `handleCellPaint` writes `brushChar` into `paintDataRef.current[col][row]`, then pings the animation controller with `setFrame(currentFrame)` to force a single rAF redraw. Without that ping, static images never re-call `main()` (their loop isn't running) and the paint stays invisible.
+4. The program wrapper in [ascii-program.ts](app/lib/ascii-program.ts) `createProgramFromProcessor` checks `paintOverlay.paintData[pos.x]?.[pos.y]` **first**, before edge/shape overlays. Paint wins over everything.
+
+Exit paths:
+- `Escape` key (handled in `ascii-preview.tsx`).
+- Clicking outside the rendered ASCII bounds (the gray area around the `<pre>`) — `paintCell` returns `false` in that case and `handleMouseDown` calls `onDrawModeChange(false)`. Drags that swing off-edge mid-stroke don't exit, since the mousemove path doesn't drop mode.
+- Clicking the pencil button again.
+
+The Draw input restricts to printable ASCII (0x20–0x7E) — non-ASCII glyphs (`✚`, emoji, etc.) fall back to a non-monospace font and shove the row right.
 
 ## Settings shape
 
@@ -196,6 +219,10 @@ In rough priority order. Listed here so a future session can pick up cleanly.
 - **BG image color formula: use CSS filter, not `adjustBrightness`.** The preview applies BG color changes via CSS `filter: brightness(1 + value/255)`. The `adjustBrightness` function in `image-processor.ts` uses a different curve (`1 + value/50` for positives) — using it for the pixelated image export produces a much darker/brighter result than what the preview shows. The export callback in `ascii-art-generator.tsx` uses `ctx.filter` with the same CSS formula before `drawImage` to guarantee they match.
 - **Pixelated image export sizing: use CHAR_WIDTH × CHAR_HEIGHT, not a uniform scale.** Character cells are `7.45 × 14.4` px (`CHAR_WIDTH`/`CHAR_HEIGHT` in [dimension-utils.ts](app/components/dimension-utils.ts)) — not square. Scaling the `cols × rows` source image by a uniform factor (e.g. ×8) produces a horizontally stretched result. The export canvas should be `Math.round(cols * CHAR_WIDTH) × Math.round(rows * CHAR_HEIGHT)`.
 - **Shape vs Sobel overlay precedence.** In `ascii-program.ts → main`, edge overlay runs before shape overlay, but both can't be populated simultaneously (the UI gates them in `processCodeSource`). Don't rely on the ordering — if you ever want both active, you'll need to design a real merge.
+- **Paint overlay must check first.** In `ascii-program.ts → main`, the paint overlay is checked **before** edge and shape overlays. Both of those `return` early when they hit, which would shadow paints if they ran first. The comment "always wins over algorithm output" is load-bearing — keep paint at the top of the chain.
+- **Static-image animation loop is asleep.** For `animationLength === 1`, `state.playing` stays false and the render loop in `animation.ts` never re-queues itself after the first frame. Anything that mutates state outside React (like `paintDataRef.current`) must call `animationController.setFrame(animationController.getState().frame)` to force one rAF redraw, or the change stays invisible. GIFs don't have this problem because their loop runs every frame.
+- **Click-to-cell math must measure the `<pre>`, not `transformedDivRef`.** The transformed wrapper's bounding rect includes the `AsciiAnimation` padding, so dividing by `rect.width × cols` stretches clicks across the padded box and offsets every paint. `paintCell` queries the inner `<pre>` element and uses *its* rect instead.
+- **Brush input must be printable ASCII.** GT America Mono only covers ASCII glyphs at fixed width. Unicode like `✚` falls back to a proportional system font and the wider replacement glyph shifts subsequent characters on its row. The `Draw glyph:` input filters input to `0x20`–`0x7E`. If you ever swap the preview font to one with broader coverage (e.g. DepartureMono), this restriction can relax.
 
 ## What's intentionally not implemented
 
