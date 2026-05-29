@@ -172,20 +172,33 @@ export function OutputOptions({
               </div>
             )}
 
-            <InputButton
-              variant="secondary"
-              className="mt-2 w-full"
-              onClick={onExportPixelatedImage}
-            >
-              Export pixelated image
-            </InputButton>
-            <InputButton
-              variant="secondary"
-              className="mt-2 w-full"
-              onClick={onExportPixelatedSVG}
-            >
-              Export pixelated SVG
-            </InputButton>
+            <div className="mt-2 flex flex-col gap-2">
+              <label
+                className="text-secondary"
+                style={{
+                  fontSize: 'var(--mt-font-size-label)',
+                  fontFamily: 'var(--mt-font-label)',
+                }}
+              >
+                Export pixelated image
+              </label>
+              <div className="flex gap-2">
+                <InputButton
+                  variant="secondary"
+                  className="flex-1"
+                  onClick={onExportPixelatedImage}
+                >
+                  PNG
+                </InputButton>
+                <InputButton
+                  variant="secondary"
+                  className="flex-1"
+                  onClick={onExportPixelatedSVG}
+                >
+                  SVG
+                </InputButton>
+              </div>
+            </div>
           </div>
         )}
       </div>
