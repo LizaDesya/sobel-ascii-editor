@@ -601,7 +601,17 @@ export function AsciiArtGenerator() {
       }
       for (const r of openRects) rects.push(r)
 
-      const pxW = Math.round(cols * CHAR_WIDTH)
+      const testSpan = document.createElement('span')
+      testSpan.innerText = 'X'.repeat(10)
+      testSpan.style.fontFamily = 'GT America Mono, monospace'
+      testSpan.style.fontSize = '12px'
+      testSpan.style.position = 'absolute'
+      testSpan.style.visibility = 'hidden'
+      document.body.appendChild(testSpan)
+      const measuredCellWidth = testSpan.getBoundingClientRect().width / 10
+      document.body.removeChild(testSpan)
+
+      const pxW = Math.round(cols * measuredCellWidth)
       const pxH = Math.round(rows * CHAR_HEIGHT)
       const rectStrs = rects.map((r) => {
         const [rr, gg, bb, aa] = r.color.split(',')

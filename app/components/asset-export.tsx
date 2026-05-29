@@ -24,7 +24,6 @@ import {
   calculateAspectRatio,
   calculateContentDimensions,
   calculateExportDimensions,
-  CHAR_WIDTH,
 } from './dimension-utils'
 
 export type ExportFormat = 'frames' | 'png' | 'svg' | 'mp4' | 'gif'
@@ -230,12 +229,12 @@ export function AssetExport({
       const { width, height } = dimensions
       const formattedText = getContent(dimensions)?.split('\n') || []
 
-      const padding = exportSettings.padding * CHAR_WIDTH
+      const padding = 0
 
       const fontSize = 12
       const cellHeight = fontSize * 1.2
       const svgHeight = height * cellHeight
-      const paddedSvgHeight = svgHeight + padding * 2
+      const paddedSvgHeight = svgHeight
 
       const testSpan = document.createElement('span')
       testSpan.innerText = 'X'.repeat(10)
@@ -249,7 +248,7 @@ export function AssetExport({
 
       const measuredCellWidth = actualCharWidth
       const svgWidth = width * measuredCellWidth
-      const paddedSvgWidth = svgWidth + padding * 2
+      const paddedSvgWidth = svgWidth
 
       let svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="${paddedSvgWidth}" height="${paddedSvgHeight}" viewBox="0 0 ${paddedSvgWidth} ${paddedSvgHeight}">\n`
       svgContent += '  <style>\n'
@@ -257,7 +256,6 @@ export function AssetExport({
       svgContent +=
         '    .grid-line { stroke: #666666; stroke-width: 0.5; stroke-opacity: 0.5; }\n'
       svgContent += '  </style>\n'
-      svgContent += `  <rect width="100%" height="100%" fill="${exportSettings.backgroundColor}"/>\n`
 
       const gridElement = document.querySelector('.grid-overlay')
       const gridType = gridElement?.getAttribute('data-grid-type') || 'none'
