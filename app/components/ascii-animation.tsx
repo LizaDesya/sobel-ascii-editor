@@ -9,6 +9,7 @@ import { useEffect, useRef, type ReactNode } from 'react'
 
 import { createAnimation, type Program } from '~/lib/animation'
 
+import { type FontFamily } from './ascii-art-generator'
 import { AnimationController } from './ascii-preview'
 
 export default function AsciiAnimation({
@@ -20,6 +21,7 @@ export default function AsciiAnimation({
   textColor,
   backgroundColor,
   padding,
+  font,
   children,
 }: {
   program: Program
@@ -30,6 +32,7 @@ export default function AsciiAnimation({
   textColor: string
   backgroundColor: string
   padding: number
+  font: FontFamily
   children: ReactNode
 }) {
   const asciiEl = useRef<HTMLPreElement>(null)
@@ -103,7 +106,7 @@ export default function AsciiAnimation({
     } catch (error) {
       console.error('Error creating animation controller:', error)
     }
-  }, [program, maxFrames, onFrameUpdate, setAnimationController])
+  }, [program, maxFrames, onFrameUpdate, setAnimationController, font])
 
   return (
     <div
@@ -120,7 +123,7 @@ export default function AsciiAnimation({
         ref={asciiEl}
         className="pointer-events-none relative z-10 m-0 select-none whitespace-pre p-0 font-mono leading-[1.2]"
         style={{
-          fontFamily: '"GT America Mono",monospace',
+          fontFamily: `"${font}", monospace`,
           fontSize: '12px',
           color: textColor,
         }}

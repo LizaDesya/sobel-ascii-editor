@@ -30,6 +30,46 @@
 }
 
 @font-face {
+  font-family: 'Fira Code';
+  font-style: normal;
+  font-weight: 400;
+  src: url('../fonts/FiraCode-Regular.woff2') format('woff2');
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Inter Mono';
+  font-style: normal;
+  font-weight: 400;
+  src: url('../fonts/InterMono-Regular.woff2') format('woff2');
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  src: url('../fonts/JetBrainsMono-Regular.woff2') format('woff2');
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Opening Hours Mono';
+  font-style: normal;
+  font-weight: 100 900;
+  src: url('../fonts/OpeningHoursMonoVF.woff2') format('woff2-variations');
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Paper Mono';
+  font-style: normal;
+  font-weight: 400;
+  src: url('../fonts/PaperMono-Regular.woff2') format('woff2');
+  font-display: block;
+}
+
+@font-face {
   font-family: 'SuisseIntl';
   src:
     url('https://oxide.computer/fonts/SuisseIntl-Regular-WebS.woff2') format('woff2'),

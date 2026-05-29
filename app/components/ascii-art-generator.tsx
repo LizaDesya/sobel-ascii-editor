@@ -44,6 +44,14 @@ import { DelayedSpinner } from './spinner'
 export type GridType = 'none' | 'horizontal' | 'vertical' | 'both'
 export type ColorMappingType = 'brightness' | 'hue' | 'saturation'
 export type PlacementMode = 'value' | 'shape'
+export type FontFamily =
+  | 'GT America Mono'
+  | 'DepartureMono'
+  | 'Fira Code'
+  | 'Inter Mono'
+  | 'JetBrains Mono'
+  | 'Opening Hours Mono'
+  | 'Paper Mono'
 
 export interface AsciiSettings {
   meta: {
@@ -86,6 +94,7 @@ export interface AsciiSettings {
     aspectRatio?: number
     useImageAspectRatio: boolean
     colorMapping: ColorMappingType
+    font: FontFamily
   }
   export: {
     textColor: string
@@ -603,7 +612,7 @@ export function AsciiArtGenerator() {
 
       const testSpan = document.createElement('span')
       testSpan.innerText = 'X'.repeat(10)
-      testSpan.style.fontFamily = 'GT America Mono, monospace'
+      testSpan.style.fontFamily = `"${settings.output.font}", monospace`
       testSpan.style.fontSize = '12px'
       testSpan.style.position = 'absolute'
       testSpan.style.visibility = 'hidden'
@@ -1126,6 +1135,7 @@ export function AsciiArtGenerator() {
                 }}
                 disabled={!program}
                 exportSettings={settings.export}
+                font={settings.output.font}
               />
             </div>
           </div>
@@ -1204,7 +1214,11 @@ export function AsciiArtGenerator() {
                 bgBrightness={settings.output.bgBrightness}
                 bgContrast={settings.output.bgContrast}
                 bgInvert={settings.output.bgInvert}
-                settings={{ ...settings.animation, ...settings.export }}
+                settings={{
+                  ...settings.animation,
+                  ...settings.export,
+                  font: settings.output.font,
+                }}
                 animationController={animationController}
                 setAnimationController={setAnimationController}
                 isExporting={isExporting}

@@ -25,7 +25,7 @@ import { InputButton, InputNumber } from '~/lib/ui/src'
 import { TEMPLATES, type TemplateType } from '~/templates'
 
 import AsciiAnimation from './ascii-animation'
-import type { GridType } from './ascii-art-generator'
+import type { FontFamily, GridType } from './ascii-art-generator'
 import { calculateContentDimensions } from './dimension-utils'
 import { GridOverlay } from './grid-overlay'
 
@@ -50,6 +50,7 @@ interface AsciiPreviewProps {
     textColor: string
     backgroundColor: string
     padding: number
+    font: FontFamily
   }
   animationController: AnimationController
   setAnimationController: (controller: AnimationController) => void
@@ -415,6 +416,7 @@ export function AsciiPreview({
               textColor={settings.textColor}
               backgroundColor={settings.backgroundColor}
               padding={paddingPixels}
+              font={settings.font}
             >
               {/* Show underlying image if enabled */}
               {showUnderlyingImage && underlyingImageUrl && !isExporting && program && (

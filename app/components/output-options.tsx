@@ -8,7 +8,7 @@
 import { InputButton, InputNumber, InputSwitch } from '~/lib/ui/src'
 import { InputSelect } from '~/lib/ui/src/components/InputSelect/InputSelect'
 
-import type { ColorMappingType, GridType } from './ascii-art-generator'
+import type { ColorMappingType, FontFamily, GridType } from './ascii-art-generator'
 import { AspectRatioInputNumber } from './aspect-ratio-input-number'
 import { Container } from './container'
 
@@ -25,6 +25,7 @@ interface OutputOptionsProps {
     aspectRatio?: number
     useImageAspectRatio: boolean
     colorMapping: ColorMappingType
+    font: FontFamily
   }
   updateSettings: (
     settings: Partial<{
@@ -39,6 +40,7 @@ interface OutputOptionsProps {
       aspectRatio?: number
       useImageAspectRatio: boolean
       colorMapping: ColorMappingType
+      font: FontFamily
     }>,
   ) => void
   sourceImageDimensions?: { width: number; height: number }
@@ -66,6 +68,26 @@ const gridOptions: GridType[] = ['none', 'horizontal', 'vertical', 'both']
 
 const colorMappingOptions: ColorMappingType[] = ['brightness', 'hue', 'saturation']
 
+const fontOptions: FontFamily[] = [
+  'GT America Mono',
+  'DepartureMono',
+  'Fira Code',
+  'Inter Mono',
+  'JetBrains Mono',
+  'Opening Hours Mono',
+  'Paper Mono',
+]
+
+const fontLabels: Record<FontFamily, string> = {
+  'GT America Mono': 'GT America Mono',
+  DepartureMono: 'Departure Mono',
+  'Fira Code': 'Fira Code',
+  'Inter Mono': 'Inter Mono',
+  'JetBrains Mono': 'JetBrains Mono',
+  'Opening Hours Mono': 'Opening Hours Mono',
+  'Paper Mono': 'Paper Mono',
+}
+
 export function OutputOptions({
   settings,
   updateSettings,
@@ -91,6 +113,15 @@ export function OutputOptions({
         }}
         onAspectRatioChange={(value) => updateSettings({ aspectRatio: value })}
       />
+
+      <InputSelect<FontFamily>
+        value={settings.font}
+        onChange={(value) => updateSettings({ font: value })}
+        options={fontOptions}
+        labelize={(option) => fontLabels[option]}
+      >
+        Display Font
+      </InputSelect>
 
       <InputSelect<ColorMappingType>
         value={settings.colorMapping}

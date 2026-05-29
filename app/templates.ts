@@ -51,6 +51,7 @@ export const DEFAULT_SETTINGS: AsciiSettings = {
     rows: 110,
     useImageAspectRatio: true,
     colorMapping: 'brightness',
+    font: 'GT America Mono',
   },
   export: {
     textColor: '#d7d8d9',

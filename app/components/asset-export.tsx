@@ -18,6 +18,7 @@ import type { Program } from '~/lib/animation'
 import { InputButton, InputNumber, InputSwitch } from '~/lib/ui/src'
 import { InputSelect } from '~/lib/ui/src/components/InputSelect/InputSelect'
 
+import type { FontFamily } from './ascii-art-generator'
 import { getContent, type AnimationController } from './ascii-preview'
 import { Container } from './container'
 import {
@@ -46,6 +47,7 @@ interface AssetExportProps {
     backgroundColor: string
     padding: number
   }
+  font: FontFamily
 }
 
 export function AssetExport({
@@ -57,6 +59,7 @@ export function AssetExport({
   dimensions,
   disabled,
   exportSettings,
+  font,
 }: AssetExportProps) {
   const [exportFormat, setExportFormat] = useState<ExportFormat>(
     animationLength > 1 ? 'frames' : 'png',
@@ -238,7 +241,7 @@ export function AssetExport({
 
       const testSpan = document.createElement('span')
       testSpan.innerText = 'X'.repeat(10)
-      testSpan.style.fontFamily = 'GT America Mono, monospace'
+      testSpan.style.fontFamily = `"${font}", monospace`
       testSpan.style.fontSize = fontSize + 'px'
       testSpan.style.position = 'absolute'
       testSpan.style.visibility = 'hidden'
@@ -252,7 +255,7 @@ export function AssetExport({
 
       let svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="${paddedSvgWidth}" height="${paddedSvgHeight}" viewBox="0 0 ${paddedSvgWidth} ${paddedSvgHeight}">\n`
       svgContent += '  <style>\n'
-      svgContent += `    .ascii-text { font-family: GT America Mono, monospace; font-size: ${fontSize}px; letter-spacing: 0; white-space: pre; }\n`
+      svgContent += `    .ascii-text { font-family: "${font}", monospace; font-size: ${fontSize}px; letter-spacing: 0; white-space: pre; }\n`
       svgContent +=
         '    .grid-line { stroke: #666666; stroke-width: 0.5; stroke-opacity: 0.5; }\n'
       svgContent += '  </style>\n'
