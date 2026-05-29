@@ -514,7 +514,11 @@ export function AsciiArtGenerator() {
   }, [settings, processedImageUrl, rawProcessedImageUrl])
 
   const exportPixelatedSVG = useCallback(() => {
-    if (!rawProcessedImageUrl) return
+    const useRaw = settings.output.separateBgColorEditing
+    const url = useRaw
+      ? rawProcessedImageUrl || settings.source.data
+      : processedImageUrl || settings.source.data
+    if (!url) return
     const img = new Image()
     img.onload = () => {
       const cols = img.width
@@ -524,7 +528,17 @@ export function AsciiArtGenerator() {
       canvas.height = rows
       const ctx = canvas.getContext('2d')!
       ctx.imageSmoothingEnabled = false
-      ctx.drawImage(img, 0, 0)
+      if (useRaw) {
+        const { bgBrightness, bgContrast, bgInvert } = settings.output
+        const filterParts = [
+          bgBrightness !== 0 ? `brightness(${1 + bgBrightness / 255})` : '',
+          bgContrast !== 1.0 ? `contrast(${bgContrast})` : '',
+          bgInvert ? 'invert(1)' : '',
+        ].filter(Boolean)
+        if (filterParts.length > 0) ctx.filter = filterParts.join(' ')
+      }
+      ctx.drawImage(img, 0, 0, cols, rows)
+      ctx.filter = 'none'
       const { data } = ctx.getImageData(0, 0, cols, rows)
 
       type OpenRect = { x: number; y: number; width: number; height: number; color: string }
@@ -591,15 +605,16 @@ export function AsciiArtGenerator() {
       const pxH = Math.round(rows * CHAR_HEIGHT)
       const rectStrs = rects.map((r) => {
         const [rr, gg, bb, aa] = r.color.split(',')
-        const fill = `rgba(${rr},${gg},${bb},${Number(aa) / 255})`
-        return `<rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" fill="${fill}"/>`
+        const fill = `rgb(${rr},${gg},${bb})`
+        const opacity = aa === '255' ? '' : ` fill-opacity="${Number(aa) / 255}"`
+        return `<rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" fill="${fill}"${opacity}/>`
       })
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${pxW}" height="${pxH}" viewBox="0 0 ${cols} ${rows}" shape-rendering="crispEdges">${rectStrs.join('')}</svg>`
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${pxW}" height="${pxH}" viewBox="0 0 ${cols} ${rows}" preserveAspectRatio="none" shape-rendering="crispEdges">${rectStrs.join('')}</svg>`
       const blob = new Blob([svg], { type: 'image/svg+xml' })
       saveAs(blob, 'pixelated-image.svg')
     }
-    img.src = rawProcessedImageUrl
-  }, [rawProcessedImageUrl])
+    img.src = url
+  }, [settings, processedImageUrl, rawProcessedImageUrl])
 
   const processCodeSource = async (
     columns: number,
