@@ -43,6 +43,7 @@ interface OutputOptionsProps {
   ) => void
   sourceImageDimensions?: { width: number; height: number }
   onExportPixelatedImage: () => void
+  onExportPixelatedSVG: () => void
 }
 
 // Character-set selection lives in the Value section of `preprocessing-options.tsx`
@@ -70,6 +71,7 @@ export function OutputOptions({
   updateSettings,
   sourceImageDimensions,
   onExportPixelatedImage,
+  onExportPixelatedSVG,
 }: OutputOptionsProps) {
   return (
     <Container>
@@ -176,6 +178,13 @@ export function OutputOptions({
               onClick={onExportPixelatedImage}
             >
               Export pixelated image
+            </InputButton>
+            <InputButton
+              variant="secondary"
+              className="mt-2 w-full"
+              onClick={onExportPixelatedSVG}
+            >
+              Export pixelated SVG
             </InputButton>
           </div>
         )}

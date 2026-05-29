@@ -513,6 +513,94 @@ export function AsciiArtGenerator() {
     img.src = url
   }, [settings, processedImageUrl, rawProcessedImageUrl])
 
+  const exportPixelatedSVG = useCallback(() => {
+    if (!rawProcessedImageUrl) return
+    const img = new Image()
+    img.onload = () => {
+      const cols = img.width
+      const rows = img.height
+      const canvas = document.createElement('canvas')
+      canvas.width = cols
+      canvas.height = rows
+      const ctx = canvas.getContext('2d')!
+      ctx.imageSmoothingEnabled = false
+      ctx.drawImage(img, 0, 0)
+      const { data } = ctx.getImageData(0, 0, cols, rows)
+
+      type OpenRect = { x: number; y: number; width: number; height: number; color: string }
+      const rects: OpenRect[] = []
+      let openRects: OpenRect[] = []
+
+      for (let y = 0; y < rows; y++) {
+        const spans: { x: number; width: number; color: string }[] = []
+        let spanStart = -1
+        let spanColor = ''
+        for (let x = 0; x < cols; x++) {
+          const i = (y * cols + x) * 4
+          const a = data[i + 3]
+          if (a === 0) {
+            if (spanStart !== -1) {
+              spans.push({ x: spanStart, width: x - spanStart, color: spanColor })
+              spanStart = -1
+            }
+            continue
+          }
+          const color = `${data[i]},${data[i + 1]},${data[i + 2]},${a}`
+          if (spanStart === -1) {
+            spanStart = x
+            spanColor = color
+          } else if (color !== spanColor) {
+            spans.push({ x: spanStart, width: x - spanStart, color: spanColor })
+            spanStart = x
+            spanColor = color
+          }
+        }
+        if (spanStart !== -1) {
+          spans.push({ x: spanStart, width: cols - spanStart, color: spanColor })
+        }
+
+        const nextOpen: OpenRect[] = []
+        const matched = new Array(openRects.length).fill(false)
+        for (const span of spans) {
+          let foundIdx = -1
+          for (let k = 0; k < openRects.length; k++) {
+            if (matched[k]) continue
+            const r = openRects[k]
+            if (r.x === span.x && r.width === span.width && r.color === span.color) {
+              foundIdx = k
+              break
+            }
+          }
+          if (foundIdx !== -1) {
+            const r = openRects[foundIdx]
+            r.height += 1
+            matched[foundIdx] = true
+            nextOpen.push(r)
+          } else {
+            nextOpen.push({ x: span.x, y, width: span.width, height: 1, color: span.color })
+          }
+        }
+        for (let k = 0; k < openRects.length; k++) {
+          if (!matched[k]) rects.push(openRects[k])
+        }
+        openRects = nextOpen
+      }
+      for (const r of openRects) rects.push(r)
+
+      const pxW = Math.round(cols * CHAR_WIDTH)
+      const pxH = Math.round(rows * CHAR_HEIGHT)
+      const rectStrs = rects.map((r) => {
+        const [rr, gg, bb, aa] = r.color.split(',')
+        const fill = `rgba(${rr},${gg},${bb},${Number(aa) / 255})`
+        return `<rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" fill="${fill}"/>`
+      })
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${pxW}" height="${pxH}" viewBox="0 0 ${cols} ${rows}" shape-rendering="crispEdges">${rectStrs.join('')}</svg>`
+      const blob = new Blob([svg], { type: 'image/svg+xml' })
+      saveAs(blob, 'pixelated-image.svg')
+    }
+    img.src = rawProcessedImageUrl
+  }, [rawProcessedImageUrl])
+
   const processCodeSource = async (
     columns: number,
     rows: number,
@@ -965,6 +1053,7 @@ export function AsciiArtGenerator() {
                 updateSettings={(changes) => updateSettings('output', changes)}
                 sourceImageDimensions={settings.source.imageDimensions}
                 onExportPixelatedImage={exportPixelatedImage}
+                onExportPixelatedSVG={exportPixelatedSVG}
               />
               {/* Preprocessing — full-bleed blue band; negative margins absorb the parent's space-y-6 gap on both sides */}
               <div className="-mb-6 -mt-6 bg-blue-500/[0.08] py-4">
